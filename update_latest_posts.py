@@ -17,6 +17,8 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
+import requests
+
 from build_multiuser_monthly_docs import (
     TARGET_USERS,
     THREAD_URL,
@@ -68,7 +70,7 @@ def fetch_user_updates(
         print(f"Fetching {username} ({uid}) page {page}", flush=True)
         try:
             page_html = fetch(page_url, cookie, timeout)
-        except (HTTPError, URLError, TimeoutError, RuntimeError) as exc:
+        except (HTTPError, URLError, TimeoutError, RuntimeError, requests.exceptions.RequestException) as exc:
             raise RuntimeError(f"Failed fetching {username} ({uid}) page {page}: {exc}") from exc
 
         parsed_posts = parse_posts(page_html, page, page_url)
