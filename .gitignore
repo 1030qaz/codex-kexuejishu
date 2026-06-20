@@ -1,0 +1,87 @@
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Build, cache, and temporary output
+build/
+dist/
+out/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+~$*
+
+# Logs
+*.log
+logs/
+
+# Generated documents and scraped/cache data
+monthly_docs/
+*.docx
+wolf_posts.json
+wolf_posts.md
+狼大6月发言整理.md
+selected_users_posts.json
+stock_name_cache.json
+market_cache_*.json
+
+# Local secrets and private configuration
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+secrets/
+private/
+config.local.*
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Node and common frontend artifacts, if added later
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# FPGA / embedded IDE generated artifacts, if added later
+.Xil/
+.runs/
+.sim/
+.hw/
+.ip_user_files/
+*.jou
+*.str
+*.rpt
+*.dcp
+*.bit
+*.sof
+*.pof
+*.qws
+*.qpf.bak
+*.qsf.bak
+db/
+incremental_db/
+output_files/
+simulation/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
