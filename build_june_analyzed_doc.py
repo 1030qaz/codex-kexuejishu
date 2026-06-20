@@ -72,8 +72,11 @@ SECTOR_KEYWORDS = {
     "核心科技/国产算力": ["科技", "核心科技", "国产算力", "华为", "昇腾", "算力", "服务器", "PCB"],
     "光通信/光模块": ["光模块", "光通信", "CPO", "光上游", "光芯片", "光器件", "光迅", "中际", "新易盛"],
     "半导体设备/材料/封测": ["半导体", "芯片", "封装", "封测", "设备", "材料", "长电", "通富", "北方华创", "中微"],
+    "存储/HBM": ["存储", "HBM", "DRAM", "NAND", "德明利", "佰维", "江波龙", "兆易创新"],
+    "PCB上游/载板材料": ["电子布", "铜箔", "树脂", "ABF", "BT载板", "玻纤", "覆铜板", "CCL"],
     "AI应用/软件": ["AI应用", "AI 软", "软件", "大模型", "传媒", "游戏"],
     "液冷/散热": ["液冷", "散热", "英维克", "强瑞"],
+    "电源/燃气轮机/算电协同": ["电源", "燃气轮机", "算电协同", "固态变压器", "AIDC", "数据中心供电"],
     "有色金属": ["有色", "金属", "铜", "铝", "小金属", "贵金属"],
     "消费/白酒": ["消费", "白酒", "食品", "旅游"],
     "金融权重": ["券商", "银行", "保险", "金融", "权重"],
@@ -134,17 +137,68 @@ STOCK_ALIAS_DIRECTION = {
     "华工": ("华工科技", "000988", "光通信/激光设备"),
     "光迅": ("光迅科技", "002281", "光通信/光模块"),
     "中际": ("中际旭创", "300308", "光模块/CPO"),
+    "大哥": ("中际旭创", "300308", "光模块/CPO"),
+    "赵姨": ("兆易创新", "603986", "存储/MCU/半导体设计"),
+    "姨": ("兆易创新", "603986", "存储/MCU/半导体设计"),
+    "zycx": ("兆易创新", "603986", "存储/MCU/半导体设计"),
     "新易盛": ("新易盛", "300502", "光模块/CPO"),
+    "二哥": ("新易盛", "300502", "光模块/CPO"),
+    "xys": ("新易盛", "300502", "光模块/CPO"),
     "龙蟠": ("龙蟠科技", "603906", "材料/电池材料"),
     "强瑞": ("强瑞技术", "301128", "液冷/测试设备/算力硬件"),
     "工富": ("工业富联", "601138", "AI 服务器/算力硬件"),
     "工业富联": ("工业富联", "601138", "AI 服务器/算力硬件"),
     "沪电": ("沪电股份", "002463", "PCB/服务器高速板"),
+    "护垫": ("沪电股份", "002463", "PCB/服务器高速板"),
+    "hdgf": ("沪电股份", "002463", "PCB/服务器高速板"),
     "兴森": ("兴森科技", "002436", "PCB/IC载板"),
     "沃尔": ("沃尔核材", "002130", "线缆/高速连接/材料"),
     "胜宏": ("胜宏科技", "300476", "PCB/AI服务器板"),
+    "shkj": ("胜宏科技", "300476", "PCB/AI服务器板"),
+    "德明利": ("德明利", "001309", "存储模组/存储芯片"),
+    "dml": ("德明利", "001309", "存储模组/存储芯片"),
+    "澜起": ("澜起科技", "688008", "内存接口芯片/算力互连"),
+    "蓝旗": ("澜起科技", "688008", "内存接口芯片/算力互连"),
+    "lqkj": ("澜起科技", "688008", "内存接口芯片/算力互连"),
+    "中科飞测": ("中科飞测", "688361", "半导体检测设备"),
+    "KFC": ("中科飞测", "688361", "半导体检测设备"),
+    "华峰测控": ("华峰测控", "688200", "半导体测试设备"),
+    "盛美上海": ("盛美上海", "688082", "半导体清洗设备"),
+    "沪硅产业": ("沪硅产业", "688126", "半导体硅片材料"),
+    "立昂微": ("立昂微", "605358", "半导体硅片/功率器件"),
+    "中兴": ("中兴通讯", "000063", "通信设备/算力网络"),
+    "zte": ("中兴通讯", "000063", "通信设备/算力网络"),
     "英伟达": ("英伟达", "NVDA", "美股 AI GPU/算力龙头"),
 }
+
+IMAGE_BLACK_TALK = {
+    "铁盒": "半导体设备方向，图片中用于指代半导体设备/相关 ETF 语境。",
+    "宝贝王国": "bbwg，图片中的论坛黑话简称。",
+    "dml": "德明利，偏存储模组/存储芯片方向。",
+    "姨": "兆易创新，偏存储/MCU/半导体设计方向。",
+    "赵姨": "兆易创新，偏存储/MCU/半导体设计方向。",
+    "大哥": "中际旭创，光模块/CPO 方向。",
+    "二哥": "新易盛，光模块/CPO 方向。",
+    "牢弟": "图片中指向 PCB 估值龙头语境，需结合原文判断是否指胜宏科技。",
+    "护垫": "沪电股份，PCB/服务器高速板方向。",
+    "沪龟": "沪硅产业，半导体大硅片材料方向。",
+    "荆轲": "拓荆科技，半导体设备方向。",
+    "KFC": "中科飞测，半导体检测设备方向。",
+    "华莱士": "华峰测控，半导体测试设备方向。",
+    "小美": "盛美上海，半导体清洗设备方向。",
+}
+
+COMPUTE_CHAIN_RULES = [
+    ("基础骨架/血管", ["电子布", "铜箔", "树脂", "PCB", "沪电", "胜宏", "深南", "生益"], "对应算力硬件的物理载体，逻辑是电子布/铜箔/树脂压制成 PCB，再承载 GPU、存储和光模块。"),
+    ("算力大脑", ["GPU", "AI芯片", "算力芯片", "寒武纪", "海光", "昇腾", "HBM", "存储"], "对应半导体、GPU/AI 芯片、HBM/存储与先进封装，重点看算力供给、国产替代和封装瓶颈。"),
+    ("高速互连", ["光模块", "CPO", "光芯片", "光纤", "光互连", "交换机"], "对应芯片间高速通信，图片框架把光模块/光纤网络/CPO 视为厂内高速公路。"),
+    ("整机与基础设施", ["AI服务器", "服务器", "液冷", "电源", "燃气轮机", "算电协同"], "对应 AI 服务器、液冷、电源和算电协同，重点看从硬件堆叠到能源支撑能否闭环。"),
+    ("商业兑现", ["算力租赁", "AIDC", "数据中心", "算力中心"], "对应算力中心建设、出租和下游 AI 公司使用，分析时要区分硬件涨价、建设成本和租赁收益。"),
+]
+
+SCARCITY_KEYWORDS = ["紧缺", "缺货", "涨价", "供需", "排产", "扩产", "瓶颈", "国产替代"]
+SCARCITY_AREAS = "存储、PCB上游/ABF/BT载板、光纤、被动元件、CPU、光上游、算力租赁、国产GPU、国产交换机芯片"
+RICE_LAW_KEYWORDS = ["稻定律", "华为", "TSV", "Chiplet", "先进封装", "CPO", "HBM", "系统总线", "光互连", "3D堆叠"]
 
 
 @dataclass
@@ -542,6 +596,28 @@ def technical_notes(body: str) -> list[str]:
     return notes
 
 
+def reference_notes(body: str) -> list[str]:
+    notes: list[str] = []
+    for stage, keywords, note in COMPUTE_CHAIN_RULES:
+        if any(keyword.lower() in body.lower() for keyword in keywords):
+            notes.append(f"{stage}：{note}")
+    if any(keyword in body for keyword in SCARCITY_KEYWORDS) and any(
+        keyword in body for keyword in ["AI", "算力", "存储", "PCB", "光", "芯片", "服务器"]
+    ):
+        notes.append(f"紧缺环节：图片将 {SCARCITY_AREAS} 列为 AI 产业链相对紧缺方向；分析时要看供需缺口、业绩兑现和股价位置是否已提前定价。")
+    slang_hits = []
+    for alias, meaning in IMAGE_BLACK_TALK.items():
+        if alias in body:
+            slang_hits.append(f"{alias}={meaning}")
+    if slang_hits:
+        notes.append("黑话/简称：" + "；".join(slang_hits[:6]))
+    if any(keyword in body for keyword in RICE_LAW_KEYWORDS):
+        notes.append(
+            "华为稻定律框架：重点不是单一材料或单一设备，而是从材料、EDA/仿真、制造封装、互连、CPO/HBM 到整机系统的延迟压缩和系统级协同。"
+        )
+    return notes[:6]
+
+
 def plain_language(post: dict[str, Any], cls: str, stocks: list[dict[str, str]]) -> str:
     if cls == "C":
         return "这条不作为交易知识重点，保留原文即可。"
@@ -566,6 +642,7 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
     sectors = detect_sectors(post["body"])
     terms = detect_terms(post["body"])
     tech = technical_notes(post["body"])
+    refs = reference_notes(post["body"])
     action = detect_action(post["body"]) if cls != "C" else "不展开"
     chain = []
     if cls != "C":
@@ -585,6 +662,7 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
         "stocks": stocks,
         "terms": terms,
         "tech": tech,
+        "refs": refs,
         "action": action,
         "chain": chain,
     }
@@ -680,6 +758,8 @@ def add_post_card(doc: Document, post: dict[str, Any], analysis: dict[str, Any])
             add_cell_line(analysis_cell, "术语解释", "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
         if analysis["tech"]:
             add_cell_line(analysis_cell, "技术/量能结构", "；".join(analysis["tech"]))
+        if analysis["refs"]:
+            add_cell_line(analysis_cell, "图片框架补充", "；".join(analysis["refs"]))
         add_cell_line(
             analysis_cell,
             "动作和风控",
@@ -812,6 +892,8 @@ def write_markdown(posts: list[dict[str, Any]], market_days: dict[str, MarketDay
                     lines.append("- 术语解释：" + "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
                 if analysis["tech"]:
                     lines.append("- 技术/量能结构：" + "；".join(analysis["tech"]))
+                if analysis["refs"]:
+                    lines.append("- 图片框架补充：" + "；".join(analysis["refs"]))
                 lines.append(f"- 动作和风控：更接近“{analysis['action']}”。需要先确认触发条件、失效条件和退出条件。")
                 lines.append("- 判断链还原：" + " / ".join(analysis["chain"]))
             lines.append("")

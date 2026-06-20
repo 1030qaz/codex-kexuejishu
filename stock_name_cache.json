@@ -138,5 +138,68 @@
     "code": "002185",
     "direction": "封装测试",
     "source": "内置映射"
+  },
+  "中兴": {
+    "alias": "中兴",
+    "name": "中兴通讯",
+    "code": "000063",
+    "direction": "通信设备/算力网络",
+    "source": "内置映射"
+  },
+  "立昂微": {
+    "alias": "立昂微",
+    "name": "立昂微",
+    "code": "605358",
+    "direction": "半导体硅片/功率器件",
+    "source": "内置映射"
+  },
+  "大哥": {
+    "alias": "大哥",
+    "name": "中际旭创",
+    "code": "300308",
+    "direction": "光模块/CPO",
+    "source": "内置映射"
+  },
+  "zte": {
+    "alias": "zte",
+    "name": "中兴通讯",
+    "code": "000063",
+    "direction": "通信设备/算力网络",
+    "source": "内置映射"
+  },
+  "姨": {
+    "alias": "姨",
+    "name": "兆易创新",
+    "code": "603986",
+    "direction": "存储/MCU/半导体设计",
+    "source": "内置映射"
+  },
+  "赵姨": {
+    "alias": "赵姨",
+    "name": "兆易创新",
+    "code": "603986",
+    "direction": "存储/MCU/半导体设计",
+    "source": "内置映射"
+  },
+  "二哥": {
+    "alias": "二哥",
+    "name": "新易盛",
+    "code": "300502",
+    "direction": "光模块/CPO",
+    "source": "内置映射"
+  },
+  "澜起": {
+    "alias": "澜起",
+    "name": "澜起科技",
+    "code": "688008",
+    "direction": "内存接口芯片/算力互连",
+    "source": "内置映射"
+  },
+  "兴森": {
+    "alias": "兴森",
+    "name": "兴森科技",
+    "code": "002436",
+    "direction": "PCB/IC载板",
+    "source": "内置映射"
   }
 }

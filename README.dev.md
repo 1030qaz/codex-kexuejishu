@@ -90,3 +90,20 @@ git push -u origin 当前分支名
 - 不用 `git reset --hard` 或强推覆盖另一台电脑的工作，除非明确确认。
 - 对生成文件冲突，通常不要解决并提交；重新生成或保留本机版本即可。
 - 冲突解决后运行 `python -m py_compile (Get-ChildItem -Filter *.py).FullName`，再提交。
+
+## 日常开发短 Prompt
+
+开始一个新任务前，请先执行 `git status` 和 `git pull --rebase`，确认当前分支和远程同步状态。然后基于最新代码完成以下任务：
+
+```text
+【任务描述】
+<在这里写你的具体开发任务>
+```
+
+要求：
+1. 修改范围尽量小；
+2. 不做无关重构；
+3. 不提交密钥等敏感内容；
+4. 修改后运行必要测试或构建；
+5. 最后给出变更摘要、测试结果、建议 commit message；
+6. 等我确认后再 commit/push。

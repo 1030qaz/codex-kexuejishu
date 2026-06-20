@@ -34,3 +34,20 @@ python -m py_compile (Get-ChildItem -Filter *.py).FullName
 - 提交前展示变更摘要和 `git status --short`。
 - 确认 `.gitignore` 已排除生成物、缓存和敏感配置。
 - 建议按功能拆分提交，提交信息说明“为什么改”和“改了什么”。
+
+## 日常开发短 Prompt
+
+开始一个新任务前，请先执行 `git status` 和 `git pull --rebase`，确认当前分支和远程同步状态。然后基于最新代码完成以下任务：
+
+```text
+【任务描述】
+<在这里写你的具体开发任务>
+```
+
+要求：
+1. 修改范围尽量小；
+2. 不做无关重构；
+3. 不提交密钥等敏感内容；
+4. 修改后运行必要测试或构建；
+5. 最后给出变更摘要、测试结果、建议 commit message；
+6. 等我确认后再 commit/push。
