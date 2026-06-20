@@ -81,7 +81,7 @@ git commit -m "简短说明本次变更"
 git push -u origin 当前分支名
 ```
 
-生成的 `monthly_docs/`、`selected_users_posts.json`、`wolf_posts.json`、`market_cache_*.json`、`*.docx` 默认不提交。需要在两台电脑共享生成结果时，优先用网盘或手动复制；确实要纳入 Git 前先确认文件大小和隐私风险。
+`selected_users_posts.json` 是共享的已抓取发言快照，`stock_name_cache.json` 是个股简称缓存，默认可以提交，用于避免另一台电脑重新抓取。生成的 `monthly_docs/`、`wolf_posts.json`、`market_cache_*.json`、`*.docx` 默认不提交。需要在两台电脑共享生成文档时，优先用网盘或手动复制；确实要纳入 Git 前先确认文件大小和隐私风险。
 
 ## 冲突处理原则
 

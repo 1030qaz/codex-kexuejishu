@@ -35,8 +35,6 @@ monthly_docs/
 wolf_posts.json
 wolf_posts.md
 狼大6月发言整理.md
-selected_users_posts.json
-stock_name_cache.json
 market_cache_*.json
 
 # Local secrets and private configuration

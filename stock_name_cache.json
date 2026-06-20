@@ -1,0 +1,142 @@
+{
+  "寒武纪": {
+    "alias": "寒武纪",
+    "name": "寒武纪",
+    "code": "688256",
+    "direction": "国产 AI 芯片/算力",
+    "source": "内置映射"
+  },
+  "寒武": {
+    "alias": "寒武",
+    "name": "寒武纪",
+    "code": "688256",
+    "direction": "国产 AI 芯片/算力",
+    "source": "内置映射"
+  },
+  "胜宏": {
+    "alias": "胜宏",
+    "name": "胜宏科技",
+    "code": "300476",
+    "direction": "PCB/AI服务器板",
+    "source": "内置映射"
+  },
+  "中际": {
+    "alias": "中际",
+    "name": "中际旭创",
+    "code": "300308",
+    "direction": "光模块/CPO",
+    "source": "内置映射"
+  },
+  "北方华创": {
+    "alias": "北方华创",
+    "name": "北方华创",
+    "code": "002371",
+    "direction": "半导体设备",
+    "source": "内置映射"
+  },
+  "北方": {
+    "alias": "北方",
+    "name": "北方华创",
+    "code": "002371",
+    "direction": "半导体设备",
+    "source": "内置映射"
+  },
+  "沪电": {
+    "alias": "沪电",
+    "name": "沪电股份",
+    "code": "002463",
+    "direction": "PCB/服务器高速板",
+    "source": "内置映射"
+  },
+  "强瑞": {
+    "alias": "强瑞",
+    "name": "强瑞技术",
+    "code": "301128",
+    "direction": "液冷/测试设备/算力硬件",
+    "source": "内置映射"
+  },
+  "高新": {
+    "alias": "高新",
+    "name": "高新发展",
+    "code": "000628",
+    "direction": "华为昇腾/算力集成",
+    "source": "内置映射"
+  },
+  "工业富联": {
+    "alias": "工业富联",
+    "name": "工业富联",
+    "code": "601138",
+    "direction": "AI 服务器/算力硬件",
+    "source": "内置映射"
+  },
+  "新易盛": {
+    "alias": "新易盛",
+    "name": "新易盛",
+    "code": "300502",
+    "direction": "光模块/CPO",
+    "source": "内置映射"
+  },
+  "英伟达": {
+    "alias": "英伟达",
+    "name": "英伟达",
+    "code": "NVDA",
+    "direction": "美股 AI GPU/算力龙头",
+    "source": "内置映射"
+  },
+  "300476": {
+    "alias": "300476",
+    "name": "胜宏科技",
+    "code": "300476",
+    "direction": "PCB/AI服务器板",
+    "source": "东方财富搜索"
+  },
+  "中芯": {
+    "alias": "中芯",
+    "name": "中芯国际",
+    "code": "688981",
+    "direction": "晶圆制造/半导体制造",
+    "source": "内置映射"
+  },
+  "长电": {
+    "alias": "长电",
+    "name": "长电科技",
+    "code": "600584",
+    "direction": "先进封装/封测",
+    "source": "内置映射"
+  },
+  "拓荆": {
+    "alias": "拓荆",
+    "name": "拓荆科技",
+    "code": "688072",
+    "direction": "半导体设备",
+    "source": "内置映射"
+  },
+  "中微": {
+    "alias": "中微",
+    "name": "中微公司",
+    "code": "688012",
+    "direction": "半导体设备",
+    "source": "内置映射"
+  },
+  "海光": {
+    "alias": "海光",
+    "name": "海光信息",
+    "code": "688041",
+    "direction": "国产 CPU/GPU/算力芯片",
+    "source": "内置映射"
+  },
+  "鼎龙": {
+    "alias": "鼎龙",
+    "name": "鼎龙股份",
+    "code": "300054",
+    "direction": "半导体材料/CMP 抛光垫",
+    "source": "内置映射"
+  },
+  "华天": {
+    "alias": "华天",
+    "name": "华天科技",
+    "code": "002185",
+    "direction": "封装测试",
+    "source": "内置映射"
+  }
+}
