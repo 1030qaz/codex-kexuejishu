@@ -86,7 +86,9 @@ Thumbs.db
 
 # Shared final monthly reports for cross-computer review
 !monthly_docs/
+monthly_docs/*
 !monthly_docs/科学技术打头阵_发言整理_2026-06.docx
 !monthly_docs/科学技术打头阵_发言整理_2026-06.md
 !monthly_docs/科学技术打头阵_发言逐条分析_2026-06.docx
 !monthly_docs/科学技术打头阵_发言逐条分析_2026-06.md
+
