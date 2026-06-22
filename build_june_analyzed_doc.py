@@ -21,7 +21,7 @@ import time
 import urllib.parse
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +37,7 @@ from docx.shared import Pt, RGBColor
 THREAD_ID = "45974302"
 THREAD_TITLE = "科学技术打头阵"
 WOLF_UID = "150058"
+DAY_SUMMARY_REFERENCE = Path("分析参考/分析揉搓线及日内总结.txt")
 
 INDEXES = {
     "1.000001": "上证指数",
@@ -325,15 +326,22 @@ def time_stage(dt: datetime) -> str:
     return "收盘后"
 
 
-def load_posts(path: Path, month: str) -> list[dict[str, Any]]:
+def load_posts(path: Path, month: str, start_date: str | None = None, end_date: str | None = None) -> list[dict[str, Any]]:
     posts = json.loads(path.read_text(encoding="utf-8-sig"))
     result = []
     for post in posts:
-        if post.get("posted_at", "").startswith(month):
-            item = dict(post)
-            item["body"] = clean_text(item.get("body", ""))
-            item["_dt"] = parse_time(item["time"])
-            result.append(item)
+        posted_at = post.get("posted_at", "")
+        if not posted_at.startswith(month):
+            continue
+        day = posted_at[:10]
+        if start_date and day < start_date:
+            continue
+        if end_date and day > end_date:
+            continue
+        item = dict(post)
+        item["body"] = clean_text(item.get("body", ""))
+        item["_dt"] = parse_time(item["time"])
+        result.append(item)
     result.sort(key=lambda p: (p["_dt"], int(p["floor"]) if str(p.get("floor", "")).isdigit() else 0, p["uid"]))
     return result
 
@@ -550,18 +558,49 @@ def referenced_market_notes(body: str, post_dt: datetime, current_market_days: d
     return notes
 
 
+def keyword_hits(body: str) -> list[str]:
+    hits: list[str] = []
+    lowered = body.lower()
+    for keyword in TRADING_KEYWORDS:
+        if keyword == "T":
+            if re.search(r"(?<![A-Za-z])(?:做T|正T|反T|T出|T回|T仓|日内T)(?![A-Za-z])", body):
+                hits.append(keyword)
+            continue
+        if keyword == "K":
+            if re.search(r"(?:K线|红K|黑K|日K|周K|月K)", body):
+                hits.append(keyword)
+            continue
+        if keyword.lower() in lowered:
+            hits.append(keyword)
+    return hits
+
+
+def has_substantive_signal(body: str) -> bool:
+    if detect_sectors(body) or technical_notes(body) or reference_notes(body):
+        return True
+    action = detect_action(body)
+    if action != "观察/未明确":
+        return True
+    if re.search(r"(低开|高开|放量|缩量|支撑|压力|缺口|仓位|减仓|加仓|止盈|止损|买|卖|突破|回踩|黄线|白线)", body):
+        return True
+    return False
+
+
 def classify_post(post: dict[str, Any]) -> tuple[str, str]:
     body = post["body"]
     if not body:
         return "C", "空正文或无有效信息。"
-    hits = [kw for kw in TRADING_KEYWORDS if kw.lower() in body.lower()]
+    hits = keyword_hits(body)
+    substantive = has_substantive_signal(body)
     if post["uid"] == WOLF_UID and len(hits) >= 2:
         return "A", "狼大发言且包含多个交易/盘面关键词，适合重点详析。"
-    if post["uid"] == WOLF_UID:
+    if post["uid"] == WOLF_UID and substantive:
         return "B", "狼大发言，交易信息较弱或偏互动，但仍保留结构化分析。"
+    if post["uid"] == WOLF_UID:
+        return "C", "狼大发言但缺少可还原的交易条件，保留原文不展开。"
     if len(hits) >= 2:
         return "A", "包含多个交易/盘面关键词，适合完整分析。"
-    if hits:
+    if hits and substantive:
         return "B", "包含少量交易关键词，适合作为上下文分析。"
     return "C", "偏互动、闲聊或情绪表达，不展开。"
 
@@ -624,12 +663,19 @@ def plain_language(post: dict[str, Any], cls: str, stocks: list[dict[str, str]])
     sectors = detect_sectors(post["body"])
     action = detect_action(post["body"])
     actor = "狼大" if post["uid"] == WOLF_UID else post["username"]
-    text = f"{actor}这条发言需要先还原成条件判断，而不是直接当作买卖指令。"
+    if sectors or stocks:
+        text = f"{actor}这条主要围绕"
+    else:
+        text = f"{actor}这条主要是在补充盘面结构或交易纪律。"
     if sectors:
-        text += f" 讨论方向涉及：{'、'.join(sectors)}。"
+        text += f"{'、'.join(sectors)}"
     if stocks:
-        text += " 涉及个股已补全为：" + "；".join(f"{s['alias']}→{s['name']}({s['code']})/{s['direction']}" for s in stocks) + "。"
-    text += f" 动作倾向更接近：{action}。"
+        stock_text = "；".join(f"{s['alias']}→{s['name']}({s['code']})/{s['direction']}" for s in stocks)
+        text += f"；涉及标的：{stock_text}"
+    if sectors or stocks:
+        text += "。"
+    if action != "观察/未明确":
+        text += f" 动作倾向：{action}。"
     return text
 
 
@@ -649,9 +695,11 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
         chain = [
             f"时间位置：{time_stage(post['_dt'])}，盘前、盘中和收盘后观点不能混用。",
             f"层级判断：{'、'.join(sectors) if sectors else '未明显点名板块，侧重交易纪律/盘面结构'}。",
-            f"个股/简称：{'；'.join(f'{s['alias']}→{s['name']}({s['code']})/{s['direction']}' for s in stocks) if stocks else '未识别到明确个股或简称'}。",
-            f"动作条件：更接近“{action}”，但只有原文条件和当时盘面同时满足才成立。",
         ]
+        if stocks:
+            chain.append(f"个股/简称：{'；'.join(f'{s['alias']}→{s['name']}({s['code']})/{s['direction']}' for s in stocks)}。")
+        if action != "观察/未明确":
+            chain.append(f"动作条件：更接近“{action}”，需要回到原文触发条件和当时盘面。")
     return {
         "class": cls,
         "reason": reason,
@@ -712,6 +760,200 @@ def add_cell_line(cell: Any, head: str, value: str, head_color: str = "111827") 
     set_font(body, 9.5, color="374151")
 
 
+def day_summary_reference_note() -> str:
+    if DAY_SUMMARY_REFERENCE.exists():
+        return "参考《分析揉搓线及日内总结.txt》与本次新增框架；仅做学习复盘，不作荐股结论。"
+    return "参考日内总结框架；仅做学习复盘，不作荐股结论。"
+
+
+def top_items(counter: Counter[str], limit: int = 5) -> list[str]:
+    return [name for name, count in counter.most_common(limit) if count > 0]
+
+
+def summarize_time_windows(day_posts: list[dict[str, Any]]) -> str:
+    windows = {
+        "盘前/开盘确认": 0,
+        "早盘": 0,
+        "午间/午后": 0,
+        "尾盘/收盘后": 0,
+    }
+    for post in day_posts:
+        stage = time_stage(post["_dt"])
+        if stage in windows:
+            windows[stage] += 1
+        elif "开盘" in stage:
+            windows["盘前/开盘确认"] += 1
+        elif "早盘" in stage:
+            windows["早盘"] += 1
+        elif "午" in stage:
+            windows["午间/午后"] += 1
+        else:
+            windows["尾盘/收盘后"] += 1
+    return "；".join(f"{name}{count}条" for name, count in windows.items() if count)
+
+
+def compact_label(post: dict[str, Any], analysis: dict[str, Any]) -> str:
+    sectors = "、".join(analysis["sectors"][:2])
+    stocks = "、".join(f"{s['alias']}→{s['name']}" for s in analysis["stocks"][:2])
+    label = sectors or stocks or analysis["translation"][:36]
+    return f"{post['time'][11:16]} {post['username']}：{label}"
+
+
+def categorize_adjustments(valuable: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, list[str]]:
+    buckets: dict[str, list[str]] = {"看多/持有": [], "观望": [], "减仓/出清": [], "风险标的": []}
+    for post, analysis in valuable:
+        label = compact_label(post, analysis)
+        action = analysis["action"]
+        text = post["body"]
+        if action in {"持有", "低吸", "做T"} or any(word in text for word in ["锁仓", "继续", "拿住", "低吸", "回补"]):
+            buckets["看多/持有"].append(label)
+        elif action in {"减仓", "止损", "不操作"} or any(word in text for word in ["减仓", "出清", "止损", "别追", "不碰", "风险"]):
+            if action == "不操作" or "别追" in text or "不碰" in text:
+                buckets["风险标的"].append(label)
+            else:
+                buckets["减仓/出清"].append(label)
+        else:
+            buckets["观望"].append(label)
+    for key in buckets:
+        buckets[key] = buckets[key][:5]
+    return buckets
+
+
+def format_adjustment_buckets(buckets: dict[str, list[str]]) -> str:
+    parts = []
+    for name in ["看多/持有", "观望", "减仓/出清", "风险标的"]:
+        items = buckets.get(name) or []
+        parts.append(f"{name}：" + ("；".join(items) if items else "不足以判断"))
+    return "\n".join(parts)
+
+
+def reusable_rules(sectors: list[str], techs: list[str], terms: list[str], valuable_count: int) -> str:
+    rules = [
+        "判断主线真假：优先看量能是否随核心方向放大、核心标的是否主动走强、板块梯队是否延续。",
+        "判断板块持续性：看核心与中军是否共振，补涨是否有承接，非主线脉冲是否只是在搅动市场。",
+        "判断个股能不能追：先看位置、量能和上方压力；上涨趋势里的长上影更适合等低接，不适合情绪追高。",
+        "判断低位方向是不是陷阱：看是否有持续资金、业绩或产业逻辑，而不是只看低位和当天涨幅。",
+    ]
+    if sectors:
+        rules.append(f"次日观察：继续跟踪{'、'.join(sectors[:3])}的量能、核心标的和板块联动。")
+    elif valuable_count == 0:
+        rules.append("次日观察：当日有效信息不足，先回到指数、量能、黄白线和主线核心确认。")
+    if techs or "揉搓线" in terms:
+        rules.append("技术框架：揉搓线、影线和缺口必须结合趋势位置与量能，不孤立解释。")
+    return " ".join(rules)
+
+
+def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver) -> dict[str, str]:
+    analyses = [(post, make_analysis(post, market_days, resolver)) for post in day_posts]
+    valuable = [(post, analysis) for post, analysis in analyses if analysis["class"] != "C"]
+    wolf_valuable = [(post, analysis) for post, analysis in valuable if post["uid"] == WOLF_UID]
+    sector_counter: Counter[str] = Counter()
+    action_counter: Counter[str] = Counter()
+    term_counter: Counter[str] = Counter()
+    tech_counter: Counter[str] = Counter()
+    stock_counter: Counter[str] = Counter()
+    for _, analysis in valuable:
+        sector_counter.update(analysis["sectors"])
+        if analysis["action"] != "观察/未明确":
+            action_counter.update([analysis["action"]])
+        term_counter.update(term for term, _ in analysis["terms"])
+        tech_counter.update(analysis["tech"])
+        stock_counter.update(f"{s['alias']}→{s['name']}" for s in analysis["stocks"])
+
+    sectors = top_items(sector_counter)
+    actions = top_items(action_counter, 4)
+    terms = top_items(term_counter, 4)
+    techs = top_items(tech_counter, 3)
+    stocks = top_items(stock_counter, 6)
+    market = market_summary(day, market_days)
+
+    if sectors:
+        tone = f"{market} 有效讨论集中在{'、'.join(sectors[:4])}，主线判断需回到量能、核心标的和板块联动验证。"
+    else:
+        tone = f"{market} 有效交易信息偏少，更多是互动、情绪反馈或既有观点补充，不足以强行归纳主线。"
+    tone += f" 当日A/B类有效发言{len(valuable)}条，C类原文保留{len(day_posts) - len(valuable)}条。"
+
+    adjustment = format_adjustment_buckets(categorize_adjustments(valuable))
+
+    core_sources = wolf_valuable[:3] or valuable[:3]
+    if core_sources:
+        core = " -> ".join(compact_label(post, analysis) for post, analysis in core_sources)
+        core = f"发言链条：{core}。重点看哪些资金在进攻、哪些方向只是搅动市场，以及量能是否验证主线真假。"
+    else:
+        core = "不足以判断；当日没有足够可串联的 A/B 类发言，不强行脑补资金进攻和对手盘关系。"
+
+    if techs:
+        technical = "；".join(techs[:4])
+    else:
+        technical = "未形成明确 K 线、影线、量能、支撑/压力等技术框架；不足以判断。"
+
+    risks = []
+    if techs:
+        risks.append("技术结构：" + "；".join(techs[:2]))
+    if terms:
+        risks.append("高频术语：" + "、".join(terms))
+    if not risks and len(valuable) <= 3:
+        risks.append("有效交易信息偏少，不能从闲聊和情绪反馈里推导操作。")
+    if len(day_posts) - len(valuable) > len(valuable):
+        risks.append("C类内容占比较高，阅读时应避免把论坛情绪当作盘面结论。")
+    risk = " ".join(risks) if risks else "主要风险在于把单条观点脱离触发条件使用；仍需结合当日指数、量能和板块核心表现验证。"
+
+    dynamics = (
+        f"时段分布：{summarize_time_windows(day_posts)}。"
+        f" 当日发言总数{len(day_posts)}条，其中狼大发言{sum(1 for p in day_posts if p['uid'] == WOLF_UID)}条。"
+        " 阅读顺序建议：先看盘前/盘后预判，再看盘中验证和情绪变化，最后看是否形成闭环判断。"
+    )
+
+    if terms or stocks:
+        glossary_items = []
+        if terms:
+            glossary_items.extend(terms[:5])
+        if stocks:
+            glossary_items.extend(stocks[:5])
+        glossary = "；".join(glossary_items)
+    else:
+        glossary = "当日未提取到高频特殊术语、缩写或黑话；不足以判断。"
+
+    return {
+        "市场定调": tone,
+        "板块/个股调仓建议": adjustment,
+        "核心博弈逻辑": core,
+        "技术与盘口语言": technical,
+        "风险/机会提示": risk,
+        "时段论坛动态综合总结": dynamics,
+        "特殊术语与黑话释义": glossary,
+        "可复用交易框架": reusable_rules(sectors, techs, terms, len(valuable)),
+    }
+
+
+def add_day_summary(doc: Document, day: str, day_posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver) -> None:
+    doc.add_heading("每日操盘内参", level=3)
+    note = doc.add_paragraph()
+    r = note.add_run(day_summary_reference_note())
+    set_font(r, 9, color="6B7280")
+    summary = build_day_summary(day, day_posts, market_days, resolver)
+    table = doc.add_table(rows=1, cols=2)
+    table.style = "Table Grid"
+    table.columns[0].width = Pt(96)
+    table.columns[1].width = Pt(390)
+    header = table.rows[0].cells
+    for idx, text in enumerate(["模块", "总结"]):
+        set_cell_shading(header[idx], "E5E7EB")
+        run = header[idx].paragraphs[0].add_run(text)
+        set_font(run, 9.5, bold=True, color="111827")
+    for index, (head, value) in enumerate(summary.items(), start=1):
+        row = table.add_row().cells
+        set_cell_shading(row[0], "F3F4F6")
+        label = row[0].paragraphs[0].add_run(f"{index}. {head}")
+        set_font(label, 9.2, bold=True, color="111827")
+        for part_idx, part in enumerate(value.split("\n")):
+            para = row[1].paragraphs[0] if part_idx == 0 else row[1].add_paragraph()
+            para.paragraph_format.space_after = Pt(2)
+            body = para.add_run(part)
+            set_font(body, 9.2, color="374151")
+    doc.add_paragraph()
+
+
 def add_post_card(doc: Document, post: dict[str, Any], analysis: dict[str, Any]) -> None:
     is_wolf = post["uid"] == WOLF_UID
     has_analysis = analysis["class"] != "C"
@@ -760,17 +1002,19 @@ def add_post_card(doc: Document, post: dict[str, Any], analysis: dict[str, Any])
             add_cell_line(analysis_cell, "技术/量能结构", "；".join(analysis["tech"]))
         if analysis["refs"]:
             add_cell_line(analysis_cell, "图片框架补充", "；".join(analysis["refs"]))
-        add_cell_line(
-            analysis_cell,
-            "动作和风控",
-            f"更接近“{analysis['action']}”。先确认触发条件、失效条件和退出条件，不能脱离原文条件照抄。",
-        )
-        add_cell_line(analysis_cell, "判断链", " / ".join(analysis["chain"]))
+        if analysis["action"] != "观察/未明确":
+            add_cell_line(
+                analysis_cell,
+                "动作和风控",
+                f"更接近“{analysis['action']}”。需结合原文触发条件、失效条件和当时盘面验证。",
+            )
+        if analysis["chain"]:
+            add_cell_line(analysis_cell, "判断链", " / ".join(analysis["chain"]))
     doc.add_paragraph()
 
 
 def add_day_toc(doc: Document, day_posts: list[dict[str, Any]]) -> None:
-    doc.add_heading("当日发言目录", level=2)
+    doc.add_heading("当日发言目录", level=3)
     table = doc.add_table(rows=1, cols=5)
     table.style = "Table Grid"
     headers = ["用户", "时间", "楼层", "类型", "方向提示"]
@@ -795,6 +1039,85 @@ def add_day_toc(doc: Document, day_posts: list[dict[str, Any]]) -> None:
             run = cell.paragraphs[0].add_run(value)
             set_font(run, 8.5, color="374151")
     doc.add_paragraph()
+
+
+def week_info(day: str) -> tuple[str, str]:
+    current = datetime.strptime(day, "%Y-%m-%d")
+    start = current - timedelta(days=current.weekday())
+    end = start + timedelta(days=6)
+    iso = current.isocalendar()
+    key = f"{iso.year}-W{iso.week:02d}"
+    label = f"第{iso.week:02d}周（{start:%Y-%m-%d} 至 {end:%Y-%m-%d}）"
+    return key, label
+
+
+def group_days_by_week(grouped: dict[str, list[dict[str, Any]]]) -> list[tuple[str, list[str]]]:
+    week_days: dict[str, list[str]] = defaultdict(list)
+    week_labels: dict[str, str] = {}
+    for day in sorted(grouped):
+        key, label = week_info(day)
+        week_days[key].append(day)
+        week_labels[key] = label
+    return [(week_labels[key], week_days[key]) for key in sorted(week_days)]
+
+
+def day_class_counts(day_posts: list[dict[str, Any]]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for post in day_posts:
+        cls, _ = classify_post(post)
+        counts[cls] += 1
+    return counts
+
+
+def day_sector_hint(day_posts: list[dict[str, Any]]) -> str:
+    counter: Counter[str] = Counter()
+    for post in day_posts:
+        cls, _ = classify_post(post)
+        if cls != "C":
+            counter.update(detect_sectors(post["body"]))
+    hints = top_items(counter, 3)
+    return "、".join(hints) if hints else "以原文保留为主"
+
+
+def add_week_overview(doc: Document, days: list[str], grouped: dict[str, list[dict[str, Any]]]) -> None:
+    doc.add_heading("本周阅读导航", level=2)
+    table = doc.add_table(rows=1, cols=5)
+    table.style = "Table Grid"
+    headers = ["日期", "发言数", "A/B/C", "主要方向", "阅读建议"]
+    for index, head in enumerate(headers):
+        cell = table.rows[0].cells[index]
+        set_cell_shading(cell, "E5E7EB")
+        run = cell.paragraphs[0].add_run(head)
+        set_font(run, 9, bold=True)
+    for day in days:
+        day_posts = grouped[day]
+        counts = day_class_counts(day_posts)
+        valuable = counts["A"] + counts["B"]
+        row = table.add_row().cells
+        values = [
+            day,
+            str(len(day_posts)),
+            f"A{counts['A']} / B{counts['B']} / C{counts['C']}",
+            day_sector_hint(day_posts),
+            "优先读A/B类与每日操盘内参" if valuable else "只看原文氛围和每日总结",
+        ]
+        for cell, value in zip(row, values):
+            cell.paragraphs[0].paragraph_format.space_after = Pt(0)
+            run = cell.paragraphs[0].add_run(value)
+            set_font(run, 8.5, color="374151")
+    doc.add_paragraph()
+
+
+def markdown_week_overview(days: list[str], grouped: dict[str, list[dict[str, Any]]]) -> list[str]:
+    lines = ["### 本周阅读导航", "", "| 日期 | 发言数 | A/B/C | 主要方向 | 阅读建议 |", "| --- | ---: | --- | --- | --- |"]
+    for day in days:
+        day_posts = grouped[day]
+        counts = day_class_counts(day_posts)
+        valuable = counts["A"] + counts["B"]
+        advice = "优先读A/B类与每日操盘内参" if valuable else "只看原文氛围和每日总结"
+        lines.append(f"| {day} | {len(day_posts)} | A{counts['A']} / B{counts['B']} / C{counts['C']} | {day_sector_hint(day_posts)} | {advice} |")
+    lines.append("")
+    return lines
 
 
 def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver, out_path: Path) -> None:
@@ -830,23 +1153,28 @@ def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], re
     for post in posts:
         grouped[post["posted_at"][:10]].append(post)
 
-    first_day = True
-    for day in sorted(grouped):
-        if not first_day:
+    first_week = True
+    for week_label, days in group_days_by_week(grouped):
+        if not first_week:
             doc.add_section(WD_SECTION_START.NEW_PAGE)
-        first_day = False
-        day_posts = grouped[day]
-        doc.add_heading(f"{day}（{len(day_posts)}条）", level=1)
-        p = doc.add_paragraph()
-        rr = p.add_run("当日指数环境：")
-        set_font(rr, 10, bold=True)
-        vv = p.add_run(market_summary(day, market_days))
-        set_font(vv, 10)
-        add_day_toc(doc, day_posts)
+        first_week = False
+        week_total = sum(len(grouped[day]) for day in days)
+        doc.add_heading(f"{week_label}（{week_total}条）", level=1)
+        add_week_overview(doc, days, grouped)
+        for day in days:
+            day_posts = grouped[day]
+            doc.add_heading(f"{day}（{len(day_posts)}条）", level=2)
+            p = doc.add_paragraph()
+            rr = p.add_run("当日指数环境：")
+            set_font(rr, 10, bold=True)
+            vv = p.add_run(market_summary(day, market_days))
+            set_font(vv, 10)
+            add_day_toc(doc, day_posts)
 
-        for post in day_posts:
-            analysis = make_analysis(post, market_days, resolver)
-            add_post_card(doc, post, analysis)
+            for post in day_posts:
+                analysis = make_analysis(post, market_days, resolver)
+                add_post_card(doc, post, analysis)
+            add_day_summary(doc, day, day_posts, market_days, resolver)
 
     doc.save(out_path)
 
@@ -856,47 +1184,63 @@ def write_markdown(posts: list[dict[str, Any]], market_days: dict[str, MarketDay
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for post in posts:
         grouped[post["posted_at"][:10]].append(post)
-    for day in sorted(grouped):
-        day_posts = grouped[day]
-        lines.append(f"## {day}（{len(day_posts)}条）")
+    for week_label, days in group_days_by_week(grouped):
+        week_total = sum(len(grouped[day]) for day in days)
+        lines.append(f"## {week_label}（{week_total}条）")
         lines.append("")
-        lines.append(f"当日指数环境：{market_summary(day, market_days)}")
-        lines.append("")
-        lines.append("### 当日发言目录")
-        lines.append("")
-        lines.append("| 用户 | 时间 | 楼层 | 类型 | 方向提示 |")
-        lines.append("| --- | --- | --- | --- | --- |")
-        for post in day_posts:
-            cls, _ = classify_post(post)
-            sectors = detect_sectors(post["body"])
-            hint = "、".join(sectors[:3]) if sectors else "原文保留"
-            lines.append(f"| {post['username']} | {post['time'][11:16]} | {post['floor']}楼 | {cls}类 | {hint} |")
-        lines.append("")
-        for post in day_posts:
-            analysis = make_analysis(post, market_days, resolver)
-            lines.append(f"### {post['username']} | {post['time']} | {post['floor']}楼 | UID {post['uid']} | {analysis['class']}类")
+        lines.extend(markdown_week_overview(days, grouped))
+        for day in days:
+            day_posts = grouped[day]
+            lines.append(f"### {day}（{len(day_posts)}条）")
             lines.append("")
-            lines.append(post["body"])
+            lines.append(f"当日指数环境：{market_summary(day, market_days)}")
             lines.append("")
-            if analysis["class"] != "C":
-                lines.append(f"**{'狼大发言详析' if post['uid'] == WOLF_UID else '发言分析'}**")
+            lines.append("#### 当日发言目录")
+            lines.append("")
+            lines.append("| 用户 | 时间 | 楼层 | 类型 | 方向提示 |")
+            lines.append("| --- | --- | --- | --- | --- |")
+            for post in day_posts:
+                cls, _ = classify_post(post)
+                sectors = detect_sectors(post["body"])
+                hint = "、".join(sectors[:3]) if sectors else "原文保留"
+                lines.append(f"| {post['username']} | {post['time'][11:16]} | {post['floor']}楼 | {cls}类 | {hint} |")
+            lines.append("")
+            for post in day_posts:
+                analysis = make_analysis(post, market_days, resolver)
+                lines.append(f"#### {post['username']} | {post['time']} | {post['floor']}楼 | UID {post['uid']} | {analysis['class']}类")
                 lines.append("")
-                lines.append(f"- 一句话还原：{analysis['translation']}")
-                if analysis["sectors"]:
-                    lines.append(f"- 板块/细分方向：{'、'.join(analysis['sectors'])}")
-                if analysis["stocks"]:
-                    lines.append("- 个股简称补全：" + "；".join(f"{s['alias']} → {s['name']}（{s['code']}，{s['direction']}，{s['source']}）" for s in analysis["stocks"]))
-                if analysis["referenced_markets"]:
-                    lines.append("- 跨日市场环境：" + "；".join(analysis["referenced_markets"]))
-                if analysis["terms"]:
-                    lines.append("- 术语解释：" + "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
-                if analysis["tech"]:
-                    lines.append("- 技术/量能结构：" + "；".join(analysis["tech"]))
-                if analysis["refs"]:
-                    lines.append("- 图片框架补充：" + "；".join(analysis["refs"]))
-                lines.append(f"- 动作和风控：更接近“{analysis['action']}”。需要先确认触发条件、失效条件和退出条件。")
-                lines.append("- 判断链还原：" + " / ".join(analysis["chain"]))
+                lines.append(post["body"])
+                lines.append("")
+                if analysis["class"] != "C":
+                    lines.append(f"**{'狼大发言详析' if post['uid'] == WOLF_UID else '发言分析'}**")
+                    lines.append("")
+                    lines.append(f"- 一句话还原：{analysis['translation']}")
+                    if analysis["sectors"]:
+                        lines.append(f"- 板块/细分方向：{'、'.join(analysis['sectors'])}")
+                    if analysis["stocks"]:
+                        lines.append("- 个股简称补全：" + "；".join(f"{s['alias']} → {s['name']}（{s['code']}，{s['direction']}，{s['source']}）" for s in analysis["stocks"]))
+                    if analysis["referenced_markets"]:
+                        lines.append("- 跨日市场环境：" + "；".join(analysis["referenced_markets"]))
+                    if analysis["terms"]:
+                        lines.append("- 术语解释：" + "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
+                    if analysis["tech"]:
+                        lines.append("- 技术/量能结构：" + "；".join(analysis["tech"]))
+                    if analysis["refs"]:
+                        lines.append("- 图片框架补充：" + "；".join(analysis["refs"]))
+                    if analysis["action"] != "观察/未明确":
+                        lines.append(f"- 动作和风控：更接近“{analysis['action']}”。需结合原文触发条件、失效条件和当时盘面验证。")
+                    if analysis["chain"]:
+                        lines.append("- 判断链还原：" + " / ".join(analysis["chain"]))
+                lines.append("")
+            lines.append("#### 每日操盘内参")
             lines.append("")
+            lines.append(f"> {day_summary_reference_note()}")
+            lines.append("")
+            for index, (head, value) in enumerate(build_day_summary(day, day_posts, market_days, resolver).items(), start=1):
+                lines.append(f"##### {index}. {head}")
+                lines.append("")
+                lines.append(value)
+                lines.append("")
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -904,6 +1248,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build analyzed June document.")
     parser.add_argument("--input", default="selected_users_posts.json")
     parser.add_argument("--month", default="2026-06")
+    parser.add_argument("--start-date", help="Optional first date to include, e.g. 2026-06-22.")
+    parser.add_argument("--end-date", help="Optional last date to include, e.g. 2026-06-28.")
     parser.add_argument("--out", default="monthly_docs/科学技术打头阵_发言逐条分析_2026-06.docx")
     parser.add_argument("--markdown", default="monthly_docs/科学技术打头阵_发言逐条分析_2026-06.md")
     parser.add_argument("--market-cache", default="market_cache_2026-06.json")
@@ -913,7 +1259,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    posts = load_posts(Path(args.input), args.month)
+    posts = load_posts(Path(args.input), args.month, args.start_date, args.end_date)
+    if not posts:
+        print("No posts found for selected period.")
+        return 1
     begin = args.month.replace("-", "") + "01"
     end = args.month.replace("-", "") + "30"
     market_days = fetch_index_klines(begin, end, Path(args.market_cache))
