@@ -33,6 +33,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
+requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+
 
 THREAD_ID = "45974302"
 THREAD_TITLE = "科学技术打头阵"
@@ -441,37 +443,36 @@ def fetch_tencent_klines(begin: str, end: str) -> dict[str, MarketDay]:
     return by_day
 
 
-def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, MarketDay]:
-    if cache_path.exists():
-        cached = json.loads(cache_path.read_text(encoding="utf-8-sig"))
-        return {day: MarketDay(date=day, indexes=payload["indexes"]) for day, payload in cached.items()}
-
+def fetch_eastmoney_klines(begin: str, end: str) -> dict[str, MarketDay]:
     session = requests.Session()
     session.trust_env = False
     by_day: dict[str, MarketDay] = {}
+    failures: list[str] = []
+
     for secid, name in INDEXES.items():
         url = (
-            "http://push2his.eastmoney.com/api/qt/stock/kline/get"
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get"
             f"?secid={secid}&fields1=f1,f2,f3,f4,f5,f6"
             "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61"
-            f"&klt=101&fqt=1&beg={begin}&end={end}"
+            f"&klt=101&fqt=1&beg={begin}&end={end}&rtntype=6"
         )
         response = None
+        last_error: Exception | None = None
         for attempt in range(1, 5):
             try:
                 response = session.get(
                     url,
-                    timeout=20,
-                    headers={"User-Agent": "Mozilla/5.0", "Referer": "http://quote.eastmoney.com/"},
+                    timeout=25,
+                    headers={"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/"},
+                    verify=False,
                 )
                 response.raise_for_status()
                 break
             except Exception as exc:
-                if attempt == 4:
-                    print(f"Warning: failed fetching {name}: {exc}")
-                else:
-                    time.sleep(1.2 * attempt)
+                last_error = exc
+                time.sleep(1.5 * attempt)
         if response is None:
+            failures.append(f"{name}: {last_error}")
             continue
         data = response.json().get("data") or {}
         for line in data.get("klines", []):
@@ -491,8 +492,50 @@ def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, Mark
                 "pct_change": float(pct),
                 "change": float(change),
                 "turnover": float(turnover),
+                "source": "东方财富日线",
             }
-    if not by_day:
+
+    if failures:
+        print("Warning: Eastmoney index fetch failed for " + "; ".join(failures[:3]))
+    return by_day
+
+
+def _next_day_yyyymmdd(day: str) -> str:
+    return (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y%m%d")
+
+
+def _merge_market_days(base: dict[str, MarketDay], fresh: dict[str, MarketDay]) -> dict[str, MarketDay]:
+    for day, md in fresh.items():
+        base.setdefault(day, MarketDay(date=day, indexes={}))
+        base[day].indexes.update(md.indexes)
+    return base
+
+
+def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, MarketDay]:
+    cached: dict[str, MarketDay] = {}
+    if cache_path.exists():
+        payload = json.loads(cache_path.read_text(encoding="utf-8-sig"))
+        cached = {day: MarketDay(date=day, indexes=item["indexes"]) for day, item in payload.items()}
+
+    effective_end = min(end, datetime.now().strftime("%Y%m%d"))
+    if begin > effective_end:
+        return cached
+
+    fetch_begin = begin
+    if cached:
+        latest_cached = max(cached)
+        end_dash = _date_dash(effective_end)
+        if latest_cached >= end_dash:
+            return cached
+        fetch_begin = _next_day_yyyymmdd(latest_cached)
+
+    fresh = fetch_eastmoney_klines(fetch_begin, effective_end)
+    if fresh:
+        by_day = _merge_market_days(cached, fresh)
+    elif cached:
+        print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance for missing market days only.")
+        by_day = _merge_market_days(cached, fetch_tencent_klines(fetch_begin, effective_end))
+    else:
         print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance.")
         by_day = fetch_tencent_klines(begin, end)
 

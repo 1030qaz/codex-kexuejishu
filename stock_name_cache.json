@@ -201,5 +201,12 @@
     "code": "002436",
     "direction": "PCB/IC载板",
     "source": "内置映射"
+  },
+  "dml": {
+    "alias": "dml",
+    "name": "德明利",
+    "code": "001309",
+    "direction": "存储模组/存储芯片",
+    "source": "内置映射"
   }
 }

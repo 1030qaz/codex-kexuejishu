@@ -5,7 +5,7 @@
 ## 项目类型
 
 - 类型：Python 脚本 + 文档生成。
-- 主要依赖：`requests`、`python-docx`。
+- 主要依赖：`requests[socks]`、`python-docx`。
 - 常用验证：`python -m py_compile (Get-ChildItem -Filter *.py).FullName`。
 - 常用更新入口：`update_current_month.py`，用于全用户增量抓取并只重建当月文档。
 
@@ -48,7 +48,7 @@ git clone <REMOTE_URL> 科学技术打头阵
 cd D:\科学技术打头阵
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install requests python-docx
+pip install -r requirements.txt
 python -m py_compile (Get-ChildItem -Filter *.py).FullName
 ```
 

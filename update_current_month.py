@@ -87,9 +87,6 @@ def main() -> int:
     print(f"Generated current-month整理文档: {month_path}")
 
     market_cache = Path(f"market_cache_{args.month}.json")
-    if market_cache.exists():
-        market_cache.unlink()
-
     analysis_doc = output_dir / f"{THREAD_TITLE}_发言逐条分析_{args.month}.docx"
     analysis_md = output_dir / f"{THREAD_TITLE}_发言逐条分析_{args.month}.md"
     run_step(
