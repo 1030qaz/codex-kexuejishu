@@ -14,6 +14,7 @@ import os
 import random
 import time
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
@@ -161,7 +162,11 @@ def main() -> int:
         time.sleep(args.delay)
 
     latest_all = max((post.posted_at for post in all_posts), default="n/a")
-    print(f"Saved {len(all_posts)} posts to {output_json}; added {total_added}; latest {latest_all}")
+    checked_at = datetime.now().isoformat(timespec="minutes")
+    print(
+        f"Saved {len(all_posts)} posts to {output_json}; added {total_added}; "
+        f"latest_post {latest_all}; checked_at {checked_at}"
+    )
     if failures:
         print("Failed users: " + ", ".join(failures))
         return 0 if args.allow_failures else 1

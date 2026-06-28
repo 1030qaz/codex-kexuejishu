@@ -35,6 +35,15 @@ python -m py_compile (Get-ChildItem -Filter *.py).FullName
 - 确认 `.gitignore` 已排除生成物、缓存和敏感配置。
 - 建议按功能拆分提交，提交信息说明“为什么改”和“改了什么”。
 
+## Skill 使用规则
+
+- 项目专用 skill 放在 `.agents/skills/`，随仓库同步；当前项目专用 skill 是 `.agents/skills/wolf-perspective/`。
+- 不要把用户级通用 skill、系统内置 skill 或第三方临时 skill 直接复制进本仓库，除非用户明确要求。
+- 新增或更新 skill 时，必须保留完整目录；如果有 `scripts/`、`references/`、`assets/`，要随 `SKILL.md` 一并保留。
+- 每个 skill 必须包含 `SKILL.md`，且 frontmatter 中必须有 `name` 和 `description`。
+- 提交前检查 skill 中是否包含 Cookie、token、API key、证书、账号密码、真实 `.env`、本地绝对路径或私有服务器地址。
+- `wolf-perspective` 只用于论坛发言、每日总结、板块轮动和交易纪律的学习复盘，不输出确定性荐股结论。
+
 ## 日常开发短 Prompt
 
 开始一个新任务前，请先执行 `git status` 和 `git pull --rebase`，确认当前分支和远程同步状态。然后基于最新代码完成以下任务：

@@ -97,6 +97,30 @@ ACTION_KEYWORDS = {
     "不操作": ["不做", "别追", "不追", "不要追", "严禁"],
 }
 
+LAYER_KEYWORDS = {
+    "核心": ["核心", "中军", "定价权", "核心标的"],
+    "风向标": ["风向标", "领涨", "赚钱效应", "先起来"],
+    "龙头": ["龙头", "龙一", "最强", "趋势领跑"],
+    "暗线": ["暗线", "预期差", "隐藏预期", "细分延伸"],
+    "杂毛": ["杂毛", "蹭", "低位杂毛", "非核心"],
+}
+
+STAGE_KEYWORDS = {
+    "埋伏": ["埋伏", "平铺", "试错", "底仓"],
+    "预期修正": ["预期", "上修", "业绩", "中报", "超预期", "不及预期"],
+    "承接换筹": ["承接", "换筹", "交换筹码", "获利盘", "接盘", "换手"],
+    "爆发": ["爆发", "加速", "突破", "放量拉", "主升"],
+    "大换手": ["大换手", "放天量", "天量", "复杂顶", "滞涨"],
+    "退潮": ["退潮", "兑现", "走弱", "破位", "跌破", "出清"],
+}
+
+ACCOUNT_KEYWORDS = {
+    "适合躺底仓/被动止盈": ["躺", "底仓", "被动止盈", "不能盯盘", "长期", "BOLL"],
+    "适合日内做T": ["做T", "日内T", "T出", "T回", "高抛低吸"],
+    "需要降低仓位": ["减仓", "降仓", "仓位", "利润垫", "风险"],
+    "能力边界提醒": ["看你自己的能力", "能力", "不要乱动", "别追", "不追"],
+}
+
 TERM_DEFS = {
     "主线": "持续获得资金选择、容量足够、逻辑可延展的方向，不等同于当天涨得多。",
     "黄线": "分时图里更接近中小盘/平均股表现的线，可辅助判断题材股强弱。",
@@ -333,7 +357,7 @@ def load_posts(path: Path, month: str, start_date: str | None = None, end_date: 
     result = []
     for post in posts:
         posted_at = post.get("posted_at", "")
-        if not posted_at.startswith(month):
+        if month != "all" and not posted_at.startswith(month):
             continue
         day = posted_at[:10]
         if start_date and day < start_date:
@@ -384,6 +408,8 @@ def fetch_tencent_klines(begin: str, end: str) -> dict[str, MarketDay]:
             if len(line) < 6:
                 continue
             date, open_, close, high, low, volume = line[:6]
+            if not (begin_dash <= date <= end_dash):
+                continue
             open_value = float(open_)
             close_value = float(close)
             high_value = float(high)
@@ -511,6 +537,14 @@ def _merge_market_days(base: dict[str, MarketDay], fresh: dict[str, MarketDay]) 
     return base
 
 
+def _has_non_eastmoney_sources(days: dict[str, MarketDay]) -> bool:
+    for md in days.values():
+        for item in md.indexes.values():
+            if item.get("source") != "东方财富日线":
+                return True
+    return False
+
+
 def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, MarketDay]:
     cached: dict[str, MarketDay] = {}
     if cache_path.exists():
@@ -523,9 +557,28 @@ def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, Mark
 
     fetch_begin = begin
     if cached:
+        if _has_non_eastmoney_sources(cached):
+            fresh_full = fetch_eastmoney_klines(begin, effective_end)
+            if fresh_full:
+                cached = _merge_market_days(cached, fresh_full)
+                cache_path.write_text(
+                    json.dumps({day: {"date": md.date, "indexes": md.indexes} for day, md in cached.items()}, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
         latest_cached = max(cached)
         end_dash = _date_dash(effective_end)
-        if latest_cached >= end_dash:
+        if latest_cached >= end_dash and not _has_non_eastmoney_sources(cached):
+            return cached
+        if latest_cached >= end_dash and _has_non_eastmoney_sources(cached):
+            fresh_full = fetch_eastmoney_klines(begin, effective_end)
+            if fresh_full:
+                by_day = _merge_market_days(cached, fresh_full)
+                cache_path.write_text(
+                    json.dumps({day: {"date": md.date, "indexes": md.indexes} for day, md in by_day.items()}, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                return by_day
+            print("Warning: Eastmoney refresh unavailable; keeping cached fallback market data.")
             return cached
         fetch_begin = _next_day_yyyymmdd(latest_cached)
 
@@ -533,11 +586,19 @@ def fetch_index_klines(begin: str, end: str, cache_path: Path) -> dict[str, Mark
     if fresh:
         by_day = _merge_market_days(cached, fresh)
     elif cached:
-        print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance for missing market days only.")
-        by_day = _merge_market_days(cached, fetch_tencent_klines(fetch_begin, effective_end))
+        fallback = fetch_tencent_klines(fetch_begin, effective_end)
+        if fallback:
+            print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance for missing market days only.")
+            by_day = _merge_market_days(cached, fallback)
+        else:
+            print("Info: no additional Eastmoney trading-day data returned for missing range; keeping cached market data.")
+            by_day = cached
     else:
-        print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance.")
         by_day = fetch_tencent_klines(begin, end)
+        if not by_day:
+            print("Info: no index kline data returned; this may be a non-trading holiday/weekend range.")
+        else:
+            print("Warning: Eastmoney index data unavailable; falling back to Tencent Finance.")
 
     cache_path.write_text(
         json.dumps({day: {"date": md.date, "indexes": md.indexes} for day, md in by_day.items()}, ensure_ascii=False, indent=2) + "\n",
@@ -663,6 +724,36 @@ def detect_action(body: str) -> str:
     return "观察/未明确"
 
 
+def detect_layer(body: str) -> str:
+    hits = [name for name, keywords in LAYER_KEYWORDS.items() if any(keyword in body for keyword in keywords)]
+    return "、".join(hits[:3]) if hits else "不足以判断"
+
+
+def detect_trend_stage(body: str) -> str:
+    hits = [name for name, keywords in STAGE_KEYWORDS.items() if any(keyword in body for keyword in keywords)]
+    return "、".join(hits[:3]) if hits else "不足以判断"
+
+
+def detect_account_fit(body: str) -> str:
+    hits = [name for name, keywords in ACCOUNT_KEYWORDS.items() if any(keyword in body for keyword in keywords)]
+    return "、".join(hits[:3]) if hits else "不足以判断"
+
+
+def t_trade_notes(body: str) -> list[str]:
+    notes: list[str] = []
+    has_t = re.search(r"做T|日内T|T出|T回|T仓|高抛低吸", body)
+    if not has_t:
+        return notes
+    if "黄线" in body or "白线" in body:
+        notes.append("做T条件：需要先确认黄白线强弱，黄线强更偏题材/中小票，白线强则日内T成功率要降级。")
+    if "放量" in body or "缩量" in body:
+        notes.append("做T条件：分时上涨放量、回调缩量更健康；放量杀跌或黄白线交织时要谨慎。")
+    if "支撑" in body or "压力" in body or "缺口" in body:
+        notes.append("做T条件：优先贴近支撑、缺口和压力位做计划，不能把开盘冲动当成买卖点。")
+    notes.append("仓位纪律：做T仓位不能自动变成加仓；三日内不达预期要承认假设问题。")
+    return notes[:4]
+
+
 def technical_notes(body: str) -> list[str]:
     notes = []
     if "揉搓线" in body or "上影" in body or "下影" in body:
@@ -675,6 +766,8 @@ def technical_notes(body: str) -> list[str]:
         notes.append("涉及突破/回踩：关键是量能、核心标的和板块跟随是否确认。")
     if "黄线" in body or "白线" in body:
         notes.append("涉及黄白线：黄线强偏题材和中小票，白线强偏权重和大票，不能混用。")
+    if any(word in body for word in ["升水", "贴水", "期指", "A50", "沪深300", "中证1000"]):
+        notes.append("涉及期指/升贴水：只能作为盘前和开盘前后情绪参考，仍需盘中量能、黄白线和板块核心验证。")
     return notes
 
 
@@ -729,8 +822,12 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
     market = market_summary(day, market_days) if cls != "C" else ""
     referenced_markets = referenced_market_notes(post["body"], post["_dt"], market_days) if cls != "C" else []
     sectors = detect_sectors(post["body"])
+    layer = detect_layer(post["body"]) if cls != "C" else "不展开"
+    trend_stage = detect_trend_stage(post["body"]) if cls != "C" else "不展开"
+    account_fit = detect_account_fit(post["body"]) if cls != "C" else "不展开"
     terms = detect_terms(post["body"])
     tech = technical_notes(post["body"])
+    t_notes = t_trade_notes(post["body"]) if cls != "C" else []
     refs = reference_notes(post["body"])
     action = detect_action(post["body"]) if cls != "C" else "不展开"
     chain = []
@@ -738,11 +835,15 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
         chain = [
             f"时间位置：{time_stage(post['_dt'])}，盘前、盘中和收盘后观点不能混用。",
             f"层级判断：{'、'.join(sectors) if sectors else '未明显点名板块，侧重交易纪律/盘面结构'}。",
+            f"狼大分层：{layer}；只有趋势行情里核心/风向标/龙头分层才有较高解释力。",
+            f"阶段定位：{trend_stage}；需用放量/缩量、筹码交换和核心标的验证。",
         ]
         if stocks:
             chain.append(f"个股/简称：{'；'.join(f'{s['alias']}→{s['name']}({s['code']})/{s['direction']}' for s in stocks)}。")
         if action != "观察/未明确":
             chain.append(f"动作条件：更接近“{action}”，需要回到原文触发条件和当时盘面。")
+        if account_fit != "不足以判断":
+            chain.append(f"账户适配：{account_fit}，不能脱离盯盘能力和资金承受力复刻。")
     return {
         "class": cls,
         "reason": reason,
@@ -750,12 +851,45 @@ def make_analysis(post: dict[str, Any], market_days: dict[str, MarketDay], resol
         "market": market,
         "referenced_markets": referenced_markets,
         "sectors": sectors,
+        "layer": layer,
+        "trend_stage": trend_stage,
+        "account_fit": account_fit,
         "stocks": stocks,
         "terms": terms,
         "tech": tech,
+        "t_notes": t_notes,
         "refs": refs,
         "action": action,
         "chain": chain,
+        "hypothesis": hypothesis_card(post, {
+            "sectors": sectors,
+            "stocks": stocks,
+            "tech": tech,
+            "action": action,
+            "layer": layer,
+            "trend_stage": trend_stage,
+            "referenced_markets": referenced_markets,
+        }) if cls != "C" else "",
+        "postmortem": postmortem_plan({
+            "sectors": sectors,
+            "stocks": stocks,
+            "tech": tech,
+            "layer": layer,
+            "trend_stage": trend_stage,
+        }) if cls != "C" else "",
+        "memory": memory_tag(post, {
+            "sectors": sectors,
+            "action": action,
+            "tech": tech,
+            "layer": layer,
+            "trend_stage": trend_stage,
+        }) if cls != "C" else "",
+        "quality": quality_guardrail({
+            "action": action,
+            "tech": tech,
+            "layer": layer,
+            "trend_stage": trend_stage,
+        }) if cls != "C" else "",
     }
 
 
@@ -805,8 +939,17 @@ def add_cell_line(cell: Any, head: str, value: str, head_color: str = "111827") 
 
 def day_summary_reference_note() -> str:
     if DAY_SUMMARY_REFERENCE.exists():
-        return "参考《分析揉搓线及日内总结.txt》与本次新增框架；仅做学习复盘，不作荐股结论。"
-    return "参考日内总结框架；仅做学习复盘，不作荐股结论。"
+        return "参考《分析揉搓线及日内总结.txt》、论坛上下文及交易复盘框架；仅做学习复盘，不作荐股结论。"
+    return "参考日内总结与交易复盘框架；仅做学习复盘，不作荐股结论。"
+
+
+def framework_note() -> str:
+    return (
+        "框架吸收 signal-postmortem、trader-memory-core、trade-hypothesis-ideator、"
+        "technical-analyst、sector-analyst、market-environment-analysis、data-quality-checker 的方法论："
+        "先提炼可证伪假设，再记录验证/失效条件，最后用市场环境、板块轮动、技术结构和数据质检闭环复盘。"
+        "本版额外接入 wolf-perspective：多空温度表、核心/风向标/龙头分层、量价筹码生命周期、做T条件和账户适配。"
+    )
 
 
 def top_items(counter: Counter[str], limit: int = 5) -> list[str]:
@@ -840,6 +983,115 @@ def compact_label(post: dict[str, Any], analysis: dict[str, Any]) -> str:
     stocks = "、".join(f"{s['alias']}→{s['name']}" for s in analysis["stocks"][:2])
     label = sectors or stocks or analysis["translation"][:36]
     return f"{post['time'][11:16]} {post['username']}：{label}"
+
+
+def evidence_quality(analysis: dict[str, Any]) -> str:
+    score = 0
+    if analysis["sectors"]:
+        score += 1
+    if analysis["stocks"]:
+        score += 1
+    if analysis["tech"]:
+        score += 1
+    if analysis["action"] != "观察/未明确":
+        score += 1
+    if analysis["referenced_markets"]:
+        score += 1
+    if score >= 4:
+        return "较强：方向、动作、技术或市场环境有多项交叉证据。"
+    if score >= 2:
+        return "中等：有可分析线索，但仍需盘面和后续走势验证。"
+    return "偏弱：更多是观点片段或情绪反馈，不能单独形成交易结论。"
+
+
+def hypothesis_card(post: dict[str, Any], analysis: dict[str, Any]) -> str:
+    sectors = "、".join(analysis["sectors"][:3]) or "未明确点名板块"
+    action = analysis["action"] if analysis["action"] != "观察/未明确" else "观察/等待确认"
+    stage = time_stage(post["_dt"])
+    layer = analysis.get("layer") or "不足以判断"
+    trend_stage = analysis.get("trend_stage") or "不足以判断"
+    hypothesis = f"若{sectors}在{stage}后仍有量能、核心标的和板块联动，且分层定位({layer})与阶段({trend_stage})被盘面确认，则该方向更可能延续；否则只当作当时盘面观察。"
+    validation = "验证：看次日/后续5个交易日是否继续放量、核心/风向标/龙头是否主动、补涨是否有承接。"
+    invalidation = "失效：缩量反抽、核心转弱、只剩非核心脉冲，做T条件未满足，或原文触发条件没有出现。"
+    return f"{hypothesis} 动作倾向：{action}。{validation} {invalidation} 证据质量：{evidence_quality(analysis)}"
+
+
+def postmortem_plan(analysis: dict[str, Any]) -> str:
+    if not (analysis["sectors"] or analysis["stocks"] or analysis["tech"]):
+        return ""
+    objects = analysis["sectors"][:2] + [f"{s['name']}({s['code']})" for s in analysis["stocks"][:2]]
+    target = "、".join(objects) if objects else "该观点涉及方向"
+    return (
+        f"把{target}记录为观察样本，复盘T+5/T+20表现；"
+        "若方向兑现则归因于量能/主线/技术结构/核心分层，若失败则标注假突破、情绪脉冲、核心走弱或市场环境错配。"
+    )
+
+
+def memory_tag(post: dict[str, Any], analysis: dict[str, Any]) -> str:
+    tags = [post["username"], time_stage(post["_dt"])]
+    if analysis["sectors"]:
+        tags.extend(analysis["sectors"][:2])
+    if analysis["action"] != "观察/未明确":
+        tags.append(analysis["action"])
+    if analysis["tech"]:
+        tags.append("技术结构")
+    if analysis.get("layer") and analysis["layer"] != "不足以判断":
+        tags.append("分层:" + analysis["layer"])
+    if analysis.get("trend_stage") and analysis["trend_stage"] != "不足以判断":
+        tags.append("阶段:" + analysis["trend_stage"])
+    return " / ".join(tags) + "；记录原文、当时市场环境、验证条件、失效条件和后续复盘结论。"
+
+
+def quality_guardrail(analysis: dict[str, Any]) -> str:
+    checks = ["日期/时段不能混用", "指数和板块结论需对应同一交易日", "简称必须补全后再学习"]
+    if analysis["action"] == "观察/未明确":
+        checks.append("未出现明确动作时不得改写成买卖建议")
+    if not analysis["tech"]:
+        checks.append("缺少技术结构时不得强行解释K线")
+    if analysis.get("layer") == "不足以判断":
+        checks.append("未识别核心/风向标/龙头时不得强行分层")
+    if analysis.get("trend_stage") == "不足以判断":
+        checks.append("未识别趋势阶段时只做观察，不套生命周期")
+    return "；".join(checks) + "。"
+
+
+def market_regime_label(market: str, valuable_count: int, c_count: int) -> str:
+    if "偏强" in market:
+        regime = "偏风险偏好"
+    elif "偏弱" in market:
+        regime = "偏防御/风险收缩"
+    else:
+        regime = "震荡观察"
+    confidence = "中等" if valuable_count >= c_count else "偏低"
+    return f"环境标签：{regime}；结论置信度{confidence}。"
+
+
+def sector_rotation_read(sectors: list[str], sector_counter: Counter[str]) -> str:
+    if not sectors:
+        return "板块轮动：有效板块线索不足，不能强行判断周期阶段。"
+    leader = "、".join(sectors[:3])
+    breadth = "较集中" if sector_counter[sectors[0]] >= 3 else "偏分散"
+    return f"板块轮动：相对强线索集中在{leader}；发言宽度{breadth}，需比较主线核心、中军与补涨梯队是否同步。"
+
+
+def technical_scenario_read(techs: list[str], sectors: list[str]) -> str:
+    base = "基准情景：趋势和量能继续配合，相关方向延续观察。"
+    bull = "强化情景：放量突破或回踩不破，核心标的带动板块扩散。"
+    bear = "失效情景：缩量、长上影、跌破支撑或核心标的走弱。"
+    if not techs:
+        return "技术情景：当日可用技术线索不足；先看趋势、支撑/压力、量能和影线是否在后续发言中被确认。"
+    focus = "、".join(sectors[:2]) if sectors else "相关方向"
+    return f"技术情景（{focus}）：{base} {bull} {bear}"
+
+
+def daily_hypotheses(valuable: list[tuple[dict[str, Any], dict[str, Any]]], limit: int = 3) -> list[str]:
+    cards = []
+    for post, analysis in valuable:
+        if analysis["sectors"] or analysis["stocks"] or analysis["tech"] or analysis["action"] != "观察/未明确":
+            cards.append(compact_label(post, analysis) + "；" + hypothesis_card(post, analysis))
+        if len(cards) >= limit:
+            break
+    return cards
 
 
 def categorize_adjustments(valuable: list[tuple[dict[str, Any], dict[str, Any]]]) -> dict[str, list[str]]:
@@ -892,6 +1144,8 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
     wolf_valuable = [(post, analysis) for post, analysis in valuable if post["uid"] == WOLF_UID]
     sector_counter: Counter[str] = Counter()
     action_counter: Counter[str] = Counter()
+    layer_counter: Counter[str] = Counter()
+    stage_counter: Counter[str] = Counter()
     term_counter: Counter[str] = Counter()
     tech_counter: Counter[str] = Counter()
     stock_counter: Counter[str] = Counter()
@@ -899,24 +1153,35 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
         sector_counter.update(analysis["sectors"])
         if analysis["action"] != "观察/未明确":
             action_counter.update([analysis["action"]])
+        if analysis["layer"] != "不足以判断":
+            layer_counter.update(analysis["layer"].split("、"))
+        if analysis["trend_stage"] != "不足以判断":
+            stage_counter.update(analysis["trend_stage"].split("、"))
         term_counter.update(term for term, _ in analysis["terms"])
         tech_counter.update(analysis["tech"])
         stock_counter.update(f"{s['alias']}→{s['name']}" for s in analysis["stocks"])
 
     sectors = top_items(sector_counter)
     actions = top_items(action_counter, 4)
+    layers = top_items(layer_counter, 4)
+    stages = top_items(stage_counter, 4)
     terms = top_items(term_counter, 4)
     techs = top_items(tech_counter, 3)
     stocks = top_items(stock_counter, 6)
     market = market_summary(day, market_days)
 
     if sectors:
-        tone = f"{market} 有效讨论集中在{'、'.join(sectors[:4])}，主线判断需回到量能、核心标的和板块联动验证。"
+        tone = f"{market} {market_regime_label(market, len(valuable), len(day_posts) - len(valuable))} 有效讨论集中在{'、'.join(sectors[:4])}，主线判断需回到量能、核心标的、风向标/龙头和板块联动验证。"
     else:
-        tone = f"{market} 有效交易信息偏少，更多是互动、情绪反馈或既有观点补充，不足以强行归纳主线。"
+        tone = f"{market} {market_regime_label(market, len(valuable), len(day_posts) - len(valuable))} 有效交易信息偏少，更多是互动、情绪反馈或既有观点补充，不足以强行归纳主线。"
     tone += f" 当日A/B类有效发言{len(valuable)}条，C类原文保留{len(day_posts) - len(valuable)}条。"
 
     adjustment = format_adjustment_buckets(categorize_adjustments(valuable))
+    adjustment += "\n" + sector_rotation_read(sectors, sector_counter)
+    if layers:
+        adjustment += "\n狼大分层线索：" + "、".join(layers)
+    if stages:
+        adjustment += "\n趋势阶段线索：" + "、".join(stages)
 
     core_sources = wolf_valuable[:3] or valuable[:3]
     if core_sources:
@@ -926,9 +1191,11 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
         core = "不足以判断；当日没有足够可串联的 A/B 类发言，不强行脑补资金进攻和对手盘关系。"
 
     if techs:
-        technical = "；".join(techs[:4])
+        technical = "；".join(techs[:4]) + " " + technical_scenario_read(techs, sectors)
     else:
-        technical = "未形成明确 K 线、影线、量能、支撑/压力等技术框架；不足以判断。"
+        technical = technical_scenario_read(techs, sectors)
+    if layers or stages:
+        technical += f" 狼大框架校正：分层={ '、'.join(layers) if layers else '不足以判断' }；阶段={ '、'.join(stages) if stages else '不足以判断' }。"
 
     risks = []
     if techs:
@@ -945,6 +1212,7 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
         f"时段分布：{summarize_time_windows(day_posts)}。"
         f" 当日发言总数{len(day_posts)}条，其中狼大发言{sum(1 for p in day_posts if p['uid'] == WOLF_UID)}条。"
         " 阅读顺序建议：先看盘前/盘后预判，再看盘中验证和情绪变化，最后看是否形成闭环判断。"
+        " 复盘闭环：把明确观点纳入T+5/T+20观察，区分真兑现、假信号、错过机会和市场环境错配。"
     )
 
     if terms or stocks:
@@ -957,6 +1225,16 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
     else:
         glossary = "当日未提取到高频特殊术语、缩写或黑话；不足以判断。"
 
+    hypotheses = daily_hypotheses(valuable)
+    if hypotheses:
+        core += "\n可证伪假设：\n" + "\n".join(f"{idx}. {item}" for idx, item in enumerate(hypotheses, start=1))
+    else:
+        core += "\n可证伪假设：不足以判断。"
+
+    rules = reusable_rules(sectors, techs, terms, len(valuable))
+    rules += " 交易记忆：保留观点来源、原始条件、验证日、失效条件和复盘结论。 数据质检：日期、简称、指数环境、板块归因和动作词必须逐项核对。"
+    rules += " 狼大框架：先看多空温度，再看核心/风向标/龙头分层，再看量价筹码阶段；做T必须满足黄白线、量能、支撑压力和账户能力条件。"
+
     return {
         "市场定调": tone,
         "板块/个股调仓建议": adjustment,
@@ -965,7 +1243,7 @@ def build_day_summary(day: str, day_posts: list[dict[str, Any]], market_days: di
         "风险/机会提示": risk,
         "时段论坛动态综合总结": dynamics,
         "特殊术语与黑话释义": glossary,
-        "可复用交易框架": reusable_rules(sectors, techs, terms, len(valuable)),
+        "可复用交易框架": rules,
     }
 
 
@@ -1043,6 +1321,14 @@ def add_post_card(doc: Document, post: dict[str, Any], analysis: dict[str, Any])
             add_cell_line(analysis_cell, "术语解释", "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
         if analysis["tech"]:
             add_cell_line(analysis_cell, "技术/量能结构", "；".join(analysis["tech"]))
+        if analysis["layer"] != "不足以判断":
+            add_cell_line(analysis_cell, "狼大分层", analysis["layer"])
+        if analysis["trend_stage"] != "不足以判断":
+            add_cell_line(analysis_cell, "趋势阶段", analysis["trend_stage"])
+        if analysis["t_notes"]:
+            add_cell_line(analysis_cell, "做T条件", "；".join(analysis["t_notes"]))
+        if analysis["account_fit"] != "不足以判断":
+            add_cell_line(analysis_cell, "账户适配", analysis["account_fit"])
         if analysis["refs"]:
             add_cell_line(analysis_cell, "图片框架补充", "；".join(analysis["refs"]))
         if analysis["action"] != "观察/未明确":
@@ -1053,6 +1339,14 @@ def add_post_card(doc: Document, post: dict[str, Any], analysis: dict[str, Any])
             )
         if analysis["chain"]:
             add_cell_line(analysis_cell, "判断链", " / ".join(analysis["chain"]))
+        if analysis["hypothesis"]:
+            add_cell_line(analysis_cell, "可证伪假设", analysis["hypothesis"])
+        if analysis["postmortem"]:
+            add_cell_line(analysis_cell, "后验复盘", analysis["postmortem"])
+        if analysis["memory"]:
+            add_cell_line(analysis_cell, "交易记忆", analysis["memory"])
+        if analysis["quality"]:
+            add_cell_line(analysis_cell, "质检提示", analysis["quality"])
     doc.add_paragraph()
 
 
@@ -1163,12 +1457,20 @@ def markdown_week_overview(days: list[str], grouped: dict[str, list[dict[str, An
     return lines
 
 
-def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver, out_path: Path) -> None:
+def report_label_for_posts(posts: list[dict[str, Any]], explicit_label: str | None = None) -> str:
+    if explicit_label:
+        return explicit_label
+    month = posts[0]["posted_at"][:7]
+    return f"{month[:4]}年{int(month[5:7])}月"
+
+
+def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver, out_path: Path, report_label: str | None = None) -> None:
     doc = Document()
     style_document(doc)
+    month_label = report_label_for_posts(posts, report_label)
     title = doc.add_paragraph(style="Title")
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title.add_run(f"{THREAD_TITLE}：2026年6月发言逐条分析")
+    title.add_run(f"{THREAD_TITLE}：{month_label}发言逐条分析")
 
     wolf_count = sum(1 for p in posts if p["uid"] == WOLF_UID)
     summary = doc.add_paragraph()
@@ -1176,11 +1478,16 @@ def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], re
     r = summary.add_run(f"共 {len(posts)} 条；狼大 {wolf_count} 条重点详析；其他 A/B 类发言按同框架分析；按发言时间顺序排列")
     set_font(r, 10, color="6B7280")
 
+    note = doc.add_paragraph()
+    note.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    nr = note.add_run(framework_note())
+    set_font(nr, 8.8, color="6B7280")
+
     doc.add_heading("用户发言目录", level=1)
     counts = Counter((p["uid"], p["username"]) for p in posts)
     overview = doc.add_table(rows=1, cols=3)
     overview.style = "Table Grid"
-    for i, head in enumerate(["用户", "UID", "6月发言数"]):
+    for i, head in enumerate(["用户", "UID", "本月发言数"]):
         cell = overview.rows[0].cells[i]
         set_cell_shading(cell, "E5E7EB")
         rr = cell.paragraphs[0].add_run(head)
@@ -1222,8 +1529,9 @@ def build_doc(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], re
     doc.save(out_path)
 
 
-def write_markdown(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver, out_path: Path) -> None:
-    lines = [f"# {THREAD_TITLE}：2026年6月发言逐条分析", ""]
+def write_markdown(posts: list[dict[str, Any]], market_days: dict[str, MarketDay], resolver: StockResolver, out_path: Path, report_label: str | None = None) -> None:
+    month_label = report_label_for_posts(posts, report_label)
+    lines = [f"# {THREAD_TITLE}：{month_label}发言逐条分析", "", f"> {framework_note()}", ""]
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for post in posts:
         grouped[post["posted_at"][:10]].append(post)
@@ -1268,12 +1576,28 @@ def write_markdown(posts: list[dict[str, Any]], market_days: dict[str, MarketDay
                         lines.append("- 术语解释：" + "；".join(f"{term}：{desc}" for term, desc in analysis["terms"]))
                     if analysis["tech"]:
                         lines.append("- 技术/量能结构：" + "；".join(analysis["tech"]))
+                    if analysis["layer"] != "不足以判断":
+                        lines.append(f"- 狼大分层：{analysis['layer']}")
+                    if analysis["trend_stage"] != "不足以判断":
+                        lines.append(f"- 趋势阶段：{analysis['trend_stage']}")
+                    if analysis["t_notes"]:
+                        lines.append("- 做T条件：" + "；".join(analysis["t_notes"]))
+                    if analysis["account_fit"] != "不足以判断":
+                        lines.append(f"- 账户适配：{analysis['account_fit']}")
                     if analysis["refs"]:
                         lines.append("- 图片框架补充：" + "；".join(analysis["refs"]))
                     if analysis["action"] != "观察/未明确":
                         lines.append(f"- 动作和风控：更接近“{analysis['action']}”。需结合原文触发条件、失效条件和当时盘面验证。")
                     if analysis["chain"]:
                         lines.append("- 判断链还原：" + " / ".join(analysis["chain"]))
+                    if analysis["hypothesis"]:
+                        lines.append(f"- 可证伪假设：{analysis['hypothesis']}")
+                    if analysis["postmortem"]:
+                        lines.append(f"- 后验复盘：{analysis['postmortem']}")
+                    if analysis["memory"]:
+                        lines.append(f"- 交易记忆：{analysis['memory']}")
+                    if analysis["quality"]:
+                        lines.append(f"- 质检提示：{analysis['quality']}")
                 lines.append("")
             lines.append("#### 每日操盘内参")
             lines.append("")
@@ -1297,6 +1621,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--markdown", default="monthly_docs/科学技术打头阵_发言逐条分析_2026-06.md")
     parser.add_argument("--market-cache", default="market_cache_2026-06.json")
     parser.add_argument("--stock-cache", default="stock_name_cache.json")
+    parser.add_argument("--label", help="Optional report label, e.g. 2026-W26（2026-06-22 至 2026-06-28）.")
     return parser.parse_args()
 
 
@@ -1306,14 +1631,19 @@ def main() -> int:
     if not posts:
         print("No posts found for selected period.")
         return 1
-    begin = args.month.replace("-", "") + "01"
-    end = args.month.replace("-", "") + "30"
+    if args.start_date and args.end_date:
+        begin = args.start_date.replace("-", "")
+        end = args.end_date.replace("-", "")
+    else:
+        begin = args.month.replace("-", "") + "01"
+        year, month = map(int, args.month.split("-"))
+        end = f"{year}{month:02d}{calendar.monthrange(year, month)[1]:02d}"
     market_days = fetch_index_klines(begin, end, Path(args.market_cache))
     resolver = StockResolver(Path(args.stock_cache))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    build_doc(posts, market_days, resolver, out)
-    write_markdown(posts, market_days, resolver, Path(args.markdown))
+    build_doc(posts, market_days, resolver, out, args.label)
+    write_markdown(posts, market_days, resolver, Path(args.markdown), args.label)
     resolver.save()
     print(f"Generated {out} with {len(posts)} posts.")
     print(f"Generated {args.markdown}.")

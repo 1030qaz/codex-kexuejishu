@@ -162,12 +162,14 @@ def main() -> int:
     print(
         json.dumps(
             {
+                "updated_at": datetime.now().isoformat(timespec="minutes"),
                 "total_posts": len(posts),
                 "week": label,
                 "start": start.strftime("%Y-%m-%d"),
                 "end": end.strftime("%Y-%m-%d"),
                 "week_posts": len(week_posts),
-                "latest_week": max(post.posted_at for post in week_posts),
+                "latest_post": max(post.posted_at for post in posts),
+                "latest_week_post": max(post.posted_at for post in week_posts),
                 "week_doc": str(week_doc),
                 "week_markdown": str(week_md),
                 "analysis_doc": str(analysis_doc),

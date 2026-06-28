@@ -111,11 +111,12 @@ def main() -> int:
     print(
         json.dumps(
             {
+                "updated_at": datetime.now().isoformat(timespec="minutes"),
                 "total_posts": len(posts),
                 "month": args.month,
                 "month_posts": len(month_posts),
-                "latest": latest,
-                "latest_month": latest_month,
+                "latest_post": latest,
+                "latest_month_post": latest_month,
                 "month_doc": str(month_path),
                 "analysis_doc": str(analysis_doc),
                 "analysis_markdown": str(analysis_md),
