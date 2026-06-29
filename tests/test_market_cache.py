@@ -28,7 +28,7 @@ class MarketCacheTests(unittest.TestCase):
                         "pct_change": 0.0,
                         "change": 0.0,
                         "turnover": 0.0,
-                        "source": "test",
+                        "source": "东方财富日线",
                     }
                 },
             }
@@ -40,7 +40,7 @@ class MarketCacheTests(unittest.TestCase):
                 market_days = analyzed.fetch_index_klines(f"{month}01", f"{month}31", cache_path)
 
         self.assertEqual([today_dash], list(market_days))
-        self.assertEqual("test", market_days[today_dash].indexes["上证指数"]["source"])
+        self.assertEqual("东方财富日线", market_days[today_dash].indexes["上证指数"]["source"])
 
 
 if __name__ == "__main__":
