@@ -1,0 +1,107 @@
+[
+  {
+    "secid": "0.002335",
+    "name": "????",
+    "theme": "AIDC??",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.002837",
+    "name": "???",
+    "theme": "????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "1.688629",
+    "name": "????",
+    "theme": "?????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.300990",
+    "name": "????",
+    "theme": "????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.301018",
+    "name": "????",
+    "theme": "????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "1.603019",
+    "name": "????",
+    "theme": "???",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.000977",
+    "name": "????",
+    "theme": "???",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "1.688800",
+    "name": "???",
+    "theme": "???",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.300568",
+    "name": "????",
+    "theme": "?????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.002850",
+    "name": "???",
+    "theme": "?????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.300438",
+    "name": "????",
+    "theme": "????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.300693",
+    "name": "????",
+    "theme": "??PCS",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "1.603688",
+    "name": "????",
+    "theme": "?????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "0.300395",
+    "name": "???",
+    "theme": "????",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  },
+  {
+    "secid": "1.688401",
+    "name": "????",
+    "theme": "???",
+    "ok": false,
+    "error": "ConnectionError(ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response')))"
+  }
+]

@@ -132,7 +132,7 @@ def main() -> int:
     week_doc = build_week_doc(label, start, end, week_posts, output_dir)
     week_md = write_week_markdown(label, start, end, week_posts, output_dir)
 
-    market_cache = Path(f"market_cache_{start:%Y-%m}.json")
+    market_cache = Path(f"market_cache_{label}.json")
     if market_cache.exists():
         market_cache.unlink()
 

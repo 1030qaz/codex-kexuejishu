@@ -21,10 +21,23 @@ from openpyxl import load_workbook
 
 TITLE = "狼大交易体系蒸馏"
 SOURCE_PATTERN = "*20260626-1410*.xlsx"
+LATEST_POSTS_PATH = Path("selected_users_posts.json")
+WOLF_UID = "150058"
+WORKBOOK_CUTOFF = "2026-06-26 14:10"
 OUTPUT_DIR = Path("分析参考")
 DOCX_OUT = OUTPUT_DIR / "狼大交易体系蒸馏_20260626.docx"
 MD_OUT = OUTPUT_DIR / "狼大交易体系蒸馏_20260626.md"
 STATS_OUT = OUTPUT_DIR / "狼大交易体系蒸馏_20260626_stats.json"
+
+YEAR_WEIGHTS = {
+    2026: 4.0,
+    2025: 2.0,
+    2024: 1.4,
+    2023: 1.3,
+    2022: 1.3,
+}
+DEFAULT_YEAR_WEIGHT = 1.0
+LATEST_POST_MULTIPLIER = 1.25
 
 
 CATEGORIES: dict[str, list[str]] = {
@@ -37,6 +50,10 @@ CATEGORIES: dict[str, list[str]] = {
     "技术结构": ["趋势", "支撑", "压力", "均线", "K", "上影", "下影", "揉搓线", "突破", "箱体"],
     "风控/反身性": ["风险", "止损", "割肉", "亏", "不碰", "问题不大", "利空", "泡沫", "兑现"],
     "散户教育/认知纠偏": ["看不懂", "纪律", "耐心", "情绪", "散户", "学习", "研究", "逻辑", "不要"],
+    "AIDC/华为国算链/Token工厂": ["AIDC", "aidc", "华为", "国算", "国产卡", "TOKEN", "Token", "token", "华丰", "算力商", "IDC"],
+    "半导体设备到材料": ["半导体设备", "半导体材料", "材料", "设备", "扩产", "国产替代", "投片", "CMP", "前驱体", "光刻胶", "特气"],
+    "新能源储能/电网外溢": ["新能源", "电池", "储能", "电网", "亿纬", "碳酸锂", "锂", "铜箔", "AIDC需要储能"],
+    "资金缩圈/外资映射": ["缩圈", "公募", "外资", "大票", "存储", "映射", "全球", "三星", "海力士", "美光"],
 }
 
 
@@ -45,6 +62,7 @@ class Reply:
     sheet: str
     posted_at: str
     text: str
+    source: str = "workbook"
 
 
 def clean_text(value: Any) -> str:
@@ -63,6 +81,7 @@ def parse_time(value: Any) -> str:
     if isinstance(value, datetime):
         return value.strftime("%Y-%m-%d %H:%M")
     text = "" if value is None else str(value).strip()
+    text = text.replace("T", " ")
     match = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{1,2})", text)
     if not match:
         return text
@@ -88,7 +107,30 @@ def load_replies(path: Path) -> list[Reply]:
                 continue
             seen.add(key)
             replies.append(Reply(ws.title, posted_at, text))
+    replies.extend(load_latest_replies(LATEST_POSTS_PATH, seen))
     replies.sort(key=lambda item: item.posted_at)
+    return replies
+
+
+def load_latest_replies(path: Path, seen: set[tuple[str, str]]) -> list[Reply]:
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    replies: list[Reply] = []
+    for item in data:
+        if str(item.get("uid", "")) != WOLF_UID:
+            continue
+        posted_at = parse_time(item.get("posted_at", ""))
+        if not posted_at or posted_at <= WORKBOOK_CUTOFF:
+            continue
+        text = clean_text(item.get("body", ""))
+        if not text:
+            continue
+        key = (posted_at, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        replies.append(Reply("selected_users_posts", posted_at, text, "latest"))
     return replies
 
 
@@ -108,12 +150,25 @@ def score(text: str, keywords: list[str]) -> int:
     return sum(1 for kw in keywords if has_keyword(text, kw))
 
 
+def reply_year(reply: Reply) -> int:
+    return int(reply.posted_at[:4]) if re.match(r"\d{4}", reply.posted_at) else 0
+
+
+def reply_weight(reply: Reply) -> float:
+    year = reply_year(reply)
+    weight = YEAR_WEIGHTS.get(year, DEFAULT_YEAR_WEIGHT)
+    if reply.source == "latest":
+        weight *= LATEST_POST_MULTIPLIER
+    return weight
+
+
 def example_priority(reply: Reply, category_score: int) -> tuple[int, int, int]:
-    year = int(reply.posted_at[:4]) if re.match(r"\d{4}", reply.posted_at) else 0
-    recent_bonus = 3 if year >= 2025 else 1 if year >= 2020 else 0
+    year = reply_year(reply)
+    recent_bonus = int(reply_weight(reply) * 10)
+    source_bonus = 8 if reply.source == "latest" else 0
     length_bonus = 2 if 35 <= len(reply.text) <= 220 else 0
     quote_penalty = -4 if "Reply to" in reply.text or "Post by" in reply.text else 0
-    return category_score + recent_bonus + length_bonus + quote_penalty, year, len(reply.text)
+    return category_score * 5 + recent_bonus + source_bonus + length_bonus + quote_penalty, year, len(reply.text)
 
 
 def short_snippet(text: str, limit: int = 54) -> str:
@@ -126,15 +181,22 @@ def short_snippet(text: str, limit: int = 54) -> str:
 def analyze(replies: list[Reply]) -> dict[str, Any]:
     by_sheet = Counter(reply.sheet for reply in replies)
     by_year = Counter(reply.posted_at[:4] for reply in replies if re.match(r"\d{4}", reply.posted_at))
+    weighted_by_year: Counter[str] = Counter()
+    by_source = Counter(reply.source for reply in replies)
     category_counts: Counter[str] = Counter()
+    weighted_category_counts: Counter[str] = Counter()
     category_candidates: dict[str, list[tuple[tuple[int, int, int], Reply]]] = defaultdict(list)
     keyword_counts: Counter[str] = Counter()
 
     for reply in replies:
+        weight = reply_weight(reply)
+        if re.match(r"\d{4}", reply.posted_at):
+            weighted_by_year[reply.posted_at[:4]] += weight
         for category, keywords in CATEGORIES.items():
             s = score(reply.text, keywords)
             if s:
                 category_counts[category] += 1
+                weighted_category_counts[category] += s * weight
                 category_candidates[category].append((example_priority(reply, s), reply))
         for keywords in CATEGORIES.values():
             for kw in keywords:
@@ -153,7 +215,7 @@ def analyze(replies: list[Reply]) -> dict[str, Any]:
             snippet = short_snippet(reply.text)
             if snippet in used or len(snippet) < 10:
                 continue
-            selected.append({"time": reply.posted_at, "sheet": reply.sheet, "snippet": snippet})
+            selected.append({"time": reply.posted_at, "sheet": reply.sheet, "source": reply.source, "snippet": snippet})
             used.add(snippet)
             if len(selected) >= 5:
                 break
@@ -162,12 +224,23 @@ def analyze(replies: list[Reply]) -> dict[str, Any]:
     return {
         "total": len(replies),
         "by_sheet": dict(by_sheet),
+        "by_source": dict(by_source),
         "by_year": dict(sorted(by_year.items())),
+        "weighted_by_year": {k: round(v, 2) for k, v in sorted(weighted_by_year.items())},
         "category_counts": dict(category_counts.most_common()),
+        "weighted_category_counts": {k: round(v, 2) for k, v in weighted_category_counts.most_common()},
         "category_examples": category_examples,
         "keyword_counts": dict(keyword_counts.most_common(60)),
         "first_time": replies[0].posted_at if replies else "",
         "last_time": replies[-1].posted_at if replies else "",
+        "latest_added": by_source.get("latest", 0),
+        "weight_policy": {
+            "2026": YEAR_WEIGHTS[2026],
+            "2025": YEAR_WEIGHTS[2025],
+            "2022-2024": "1.3-1.4",
+            "older": DEFAULT_YEAR_WEIGHT,
+            "latest_post_multiplier": LATEST_POST_MULTIPLIER,
+        },
     }
 
 
@@ -175,13 +248,13 @@ def lines_from_analysis(stats: dict[str, Any]) -> list[str]:
     total = stats["total"]
     start = stats["first_time"]
     end = stats["last_time"]
-    top_categories = list(stats["category_counts"].items())[:6]
+    top_categories = list(stats["weighted_category_counts"].items())[:9]
     top_keywords = "、".join(k for k, _ in list(stats["keyword_counts"].items())[:18])
 
     lines: list[str] = [
         f"# {TITLE}",
         "",
-        f"> 数据源：`狼大回复汇总+20260626-1410&往期.xlsx`。清洗去重后共 {total} 条，时间跨度 {start} 至 {end}。",
+        f"> 数据源：`狼大回复汇总+20260626-1410&往期.xlsx` + `selected_users_posts.json` 新增狼大发言。清洗去重后共 {total} 条，时间跨度 {start} 至 {end}。",
         "> 本文只做个人学习和复盘框架整理，不构成投资建议，也不替代原作者本人判断。",
         "",
         "## 一句话蒸馏",
@@ -195,7 +268,18 @@ def lines_from_analysis(stats: dict[str, Any]) -> list[str]:
         f"| 覆盖记录 | {total} 条 |",
         f"| 时间跨度 | {start} 至 {end} |",
         f"| Sheet | {'；'.join(f'{k}: {v}' for k, v in stats['by_sheet'].items())} |",
+        f"| 来源 | {'；'.join(f'{k}: {v}' for k, v in stats['by_source'].items())} |",
+        f"| 加权规则 | 2026={stats['weight_policy']['2026']}x；2025={stats['weight_policy']['2025']}x；2022-2024={stats['weight_policy']['2022-2024']}x；更早={stats['weight_policy']['older']}x；最新增量再乘 {stats['weight_policy']['latest_post_multiplier']}x |",
         f"| 高频词 | {top_keywords} |",
+        "",
+        "## 蒸馏权重策略",
+        "",
+        "全量 Excel 用来确定长期主题框架，2026 年发言用来校正当前市场阶段和最新产业主线。遇到历史经验和 2026 新发言冲突时，不直接覆盖长期纪律，而是按“长期框架定边界、2026 发言定优先级、最新发言定战术修正”的顺序处理。",
+        "",
+        "- 主题骨架：优先来自 `狼大回复汇总+20260626-1410&往期.xlsx` 的长期高频模块，例如市场温度、主线容量、核心分层、量价筹码、仓位纪律。",
+        "- 当前权重：2026 年发言权重最高，用来判断当下主线、资金风格、产业阶段和具体执行口径。",
+        "- 最新增量：Excel 截止后从 `selected_users_posts.json` 合并的狼大发言，只作为增量校正，不能把单条新发言直接固化成确定性荐股。",
+        "- 冲突处理：历史框架负责“不该怎么做”，2026 发言负责“现在更该看什么”；若二者冲突，先标注时间条件和失效条件。",
         "",
         "## 狼大模型：五层判断链",
         "",
@@ -216,6 +300,16 @@ def lines_from_analysis(stats: dict[str, Any]) -> list[str]:
         "- 主线判断要补核心、风向标、龙头、暗线和杂毛的分层。",
         "- 趋势分析要补量价筹码生命周期：埋伏、预期修正、承接换筹、爆发、大换手、逻辑变更。",
         "- 来源归属要更严格：整理帖内有图哥和其他用户内容，不能直接混成狼大本人观点。",
+        "",
+        "## 2026 最新发言对模型的校正",
+        "",
+        f"> Excel 截止后新增狼大发言 {stats['latest_added']} 条。该部分调高权重，用来校正 2026 下半年视角，不作为具体标的确认。",
+        "",
+        "- 下半年 AIDC 从普通数据中心叙事收敛到华为国算链、国产卡放量、自建 AIDC 和 Token 工厂。",
+        "- 半导体由设备订单逻辑延展到材料消耗周期；高位分支必须回到量价，低位分支才优先看逻辑。",
+        "- 新能源储能和电网作为 AIDC 外溢方向，需要业绩、储能需求或 IDC 转 AIDC 改造验证，不能靠概念自动上修。",
+        "- 科技行情后段可能出现缩圈，越缩越核心；大票带指数而情绪小票落后时，要警惕加速后段。",
+        "- 未明说持仓不能强行脑补；涉及具体票时只能列证据强弱和候选，不写确定答案。",
         "",
         "## 蒸馏出的心智模型",
         "",
@@ -288,8 +382,10 @@ def lines_from_analysis(stats: dict[str, Any]) -> list[str]:
         "风控/反身性": "风险不只来自利空，也来自拥挤、兑现、情绪扩散、泡沫叙事和自己看不懂。",
         "散户教育/认知纠偏": "经常纠正散户把结果当逻辑、把消息当买点、把上涨当确定性的误区。",
     }
-    for category, count in top_categories:
-        lines.append(f"### {category}（命中 {count} 条）")
+    raw_counts = stats["category_counts"]
+    for category, weighted_count in top_categories:
+        raw_count = raw_counts.get(category, 0)
+        lines.append(f"### {category}（原始命中 {raw_count} 条；加权 {weighted_count}）")
         lines.append("")
         lines.append(module_notes.get(category, "这是高频出现的行为或认知模块，适合作为后续分析标签。"))
         examples = stats["category_examples"].get(category, [])[:3]
